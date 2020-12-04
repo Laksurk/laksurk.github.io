@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8" />
+<title>card</title>
+<script src="https://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
+<script>
+
+var n=5;
+var fin=n*n;
+function toggle(i){
+    var obj=$("div.square").eq(i);
+    if(obj.hasClass("black")) { obj.addClass("grey").removeClass("black"); fin++; }
+    else { obj.addClass("black").removeClass("grey"); fin--; }
+}
+$(function(){
+    for(var i=0;i<n;i++){
+        for(var j=0;j<n;j++)
+            $("body").prepend("<div class='square grey'></div>");
+        $("div:first").addClass("square1");
+    }
+    $("div.square").click(function(){
+        var cnt=Number($("#text").text());
+        $("#text").text((cnt+1).toString());
+        var idx=$(this).index("div.square");
+        toggle(idx);
+        if(idx-n>=0) toggle(idx-n);
+        if(idx+n<n*n) toggle(idx+n);
+        if(idx!=0&& idx%n!=0) toggle(idx-1);
+        if((idx+1)%n!=0) toggle(idx+1);
+        if(fin==0){
+            fin=n*n;
+            alert("You win!");
+            $("div.square").addClass("grey").removeClass("black");
+            $("#text").text("0");
+        }
+    });
+});
+
+</script>
+<style>
+
+
+div.square1 { clear: left; }
+div.grey { background-color: #ddd; }
+div.black { background-color: black; }
+div.square {
+    float: left;
+    width: 60px;
+    height: 60px;
+    border: 2px solid white;
+}
+div.text {
+    clear: left;
+    font-size: large;
+    font-family: "Consolas";
+}
+
+</style>
+
+</head>
+<body>
+
+<div class="text"><br/>&emsp;Move: <span id="text">0</span></div>
+
+</body>
+</html>
