@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8" />
+<title>儒略日在线计算</title>
+<script src="../src/jquery.min.js"></script>
+<script>
+
+var julian={
+    c_month:[0,31,28,31,30,31,30,31,31,30,31,30,31],
+    y:-4713, m:1, d:1,
+    init:function(){
+        this.y=-4713; this.m=1; this.d=1;
+    },
+    isLp:function(){
+        if(this.y>1582) return (this.y%400==0)||((this.y%4==0)&&(this.y%100!=0));
+	    if(this.y>0) return this.y%4==0;
+	    return this.y%4==-1;
+    },
+    nextDay:function(){
+        this.d++;
+		if(this.y==1582&&this.m==10&&this.d==5) this.d=15;
+		if(this.d<=this.c_month[this.m]) return;
+		if(this.m==2&&this.d==29&&this.isLp(this.y)) return;
+		this.d=1; this.m++;
+		if(this.m>12){
+			this.m=1; this.y++;
+			if(this.y==0) this.y++;
+		}
+    },
+    equal:function(y,m,d){
+        return (this.y==y)&&(this.m==m)&&(this.d==d);
+    },
+    print:function(){
+        var s="";
+        if(this.y<0) s+=(-this.y)+"."+this.m+"."+this.d+" BC";
+        else s+=this.y+"."+this.m+"."+this.d;
+        return s;
+    }
+};
+
+$(function(){
+    var dt=new Date();
+    var y=dt.getFullYear(), m=dt.getMonth()+1, d=dt.getDate();
+    var i=0;
+    while(!julian.equal(y,m,d)){
+        julian.nextDay();
+        i++;
+    }
+    $("div.title").append("Date: " + julian.print() + "&emsp;&emsp;Julian: " + i);
+    $("#okJulian").click(function(){
+        var j=Number($("#inputJulian").val());
+        julian.init();
+        while(j--) julian.nextDay();
+        if(julian.y>0){ $("#inputYear").val("" + julian.y); $("#buttonBC").text("AD"); }
+        else{ $("#inputYear").val(-julian.y); $("#buttonBC").text("BC"); }
+        $("#inputMonth").val(julian.m);
+        $("#inputDate").val(julian.d);
+    });
+    $("#okDate").click(function(){
+        var y=Number($("#inputYear").val());
+        var m=Number($("#inputMonth").val());
+        var d=Number($("#inputDate").val());
+        if($("#buttonBC").text()=="BC") y=-y;
+        julian.init();
+        var i=0;
+        while(!julian.equal(y,m,d)){
+            julian.nextDay();
+            i++;
+            if(i>=10000000){ $("#inputJulian").val("INF"); return; }
+        }
+        $("#inputJulian").val(i);
+    });
+    $("#buttonBC").click(function(){
+        if($("#buttonBC").text()=="AD") $("#buttonBC").text("BC");
+        else $("#buttonBC").text("AD");
+    });
+});
+
+</script>
+<style>
+
+body {
+    background-color: black;
+}
+div.title {
+    border: black 30px solid;
+    text-align: center;
+    color: white;
+    font-size: xx-large;
+}
+div.calculator {
+    border: black 30px solid;
+    text-align: center;
+}
+input {
+    text-align: center;
+    color: black;
+    font-size: large;
+    width: 40px;
+}
+input#inputJulian {
+    width: 150px;
+}
+input#inputYear {
+    width: 80px;
+}
+button {
+    text-align: center;
+    color: black;
+    font-size: large;
+}
+
+</style>
+
+</head>
+<body>
+
+<div class="title"></div>
+<div class="calculator">
+    <input id="inputJulian" />
+    <button id="okJulian">-- Convert to Date --&gt;</button><button id="okDate">&lt;-- Convert to Julian --</button>
+    <input id="inputYear" /><input id="inputMonth" /><input id="inputDate" /><button id="buttonBC">AD</button>
+</div>
+
+</body>
+</html>
