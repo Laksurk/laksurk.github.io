@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8" />
+<title>移球游戏</title>
+<script src="../src/jquery.min.js"></script>
+<script> 
+
+var n=5,m=6;
+var BallHeight=40;
+var ColWidth=80,ColHeight=m*BallHeight+14;
+
+var selected=-1;
+var G=[[0]];
+function initG(){
+    $("div.base").text("Move: 0");
+
+    var buf=[];
+    for(var i=1;i<=n;i++)
+        for(var j=0;j<m;j++)
+            buf.push(i);
+    for(var i=buf.length-1;i>0;i--){
+        var r=Math.floor(Math.random()*(i+1));
+        var t=buf[i]; buf[i]=buf[r]; buf[r]=t;
+    }
+
+    var idx=0;
+    for(var i=0;i<n;i++){
+        G[i]=[];
+        for(var j=0;j<m;j++)
+            G[i][j]=buf[idx++];
+    }
+    G[n]=[];
+
+    for(var i=0;i<=n;i++)
+        $("div.container").append("<div class='column'></div>");
+    $("div.column").width(ColWidth).height(ColHeight);
+    for(var i=0;i<=n;i++)
+        for(var j=0;j<G[i].length;j++){
+            $("div.column").eq(i).append("<div class='ball'></div>");
+            $("div.ball:last").css("bottom",j*BallHeight + "px")
+                .text("" + G[i][j]);
+        }
+    $("div.ball").width(ColWidth-12).height(BallHeight-10).css("line-height",BallHeight-10 + "px");
+
+    $("div.column").click(function(){
+        var col=$(this).index();
+        if(selected==col){
+            selected=-1;
+            $("div.rod").removeClass("selected");
+        }
+        else if(selected==-1){
+            if(G[col].length>0){
+                selected=col;
+                $("div.rod").eq(col).addClass("selected");
+            }
+        }
+        else{
+            if(G[col].length<m){
+                $("div.rod").removeClass("selected");
+                var c=G[selected].pop();
+                $("div.column").eq(selected).children("div.ball:last").remove();
+                $("div.column").eq(col).append("<div class='ball'></div>");
+                $("div.column").eq(col).children("div.ball:last")
+                    .css("bottom",G[col].length*BallHeight + "px")
+                    .width(ColWidth-12).height(BallHeight-10)
+                    .css("line-height",BallHeight-10 + "px")
+                    .text("" + c);
+                G[col].push(c);
+                selected=-1;
+
+                var move=parseInt($("div.base").text().substr(6));
+                $("div.base").text("Move: " + (move+1));
+                
+                var Failed=true;
+                for(var i=0;i<=n;i++){
+                    for(var j=0;j<G[i].length;j++)
+                        if(G[i][j]!=G[i][0]) return;
+                    if(G[i].length==0) Failed=false;
+                }
+                if(Failed) return;
+                alert("You win");
+                $("div.container").text("");
+                initG();
+            }
+        }
+    });
+}
+
+$(function(){
+    for(var i=0;i<=n;i++)
+        $("div.background").append("<div class='rod'></div>")
+    $("div.rod").width(3).height(ColHeight).css("margin","0 " + ((ColWidth-3)/2) + "px");
+    $("div.background").append("<div class='base'></div>");
+    initG();
+});
+
+</script>
+<style>
+
+div.background {
+    position: fixed;
+    margin: 50px;
+}
+div.container {
+    position: fixed;
+    margin: 50px;
+}
+div.rod {
+    float: left;
+    background-color: black;
+}
+div.base {
+    clear: both;
+    height: 30px;
+    border: 3px solid black;
+    padding-left: 10px;
+    line-height: 30px;
+    font-weight: bold;
+}
+div.column {
+    float: left;
+}
+div.ball {
+    position: absolute;
+    bottom: 5px;
+    margin: 6px 4px;
+    border: 2px solid black;
+    border-radius: 5px;
+    text-align: center;
+    background-color: white;
+    font-size: large;
+    font-weight: bold;
+}
+div.selected {
+    background-color: red;
+}
+* {
+    cursor: default;
+}
+
+</style>
+
+</head>
+<body onselectstart="return false">
+
+<div class="background"></div>
+<div class="container"></div>
+
+</body>
+</html>
