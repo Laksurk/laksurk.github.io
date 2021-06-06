@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8" />
+<title>数字华容道</title>
+<script src="../src/jquery.min.js"></script>
+<script>
+
+var n=4;
+var x=n-1,y=n-1,lx=x,ly=y;
+var a,q;
+var lock;
+function move(dir){
+    var nxt=[[1,0],[0,1],[-1,0],[0,-1]];
+    var tx=x+nxt[dir][0],ty=y+nxt[dir][1];
+    if(tx<0||tx>=n||ty<0||ty>=n) return true;
+    a[x][y]=a[tx][ty]; a[tx][ty]='';
+    lx=x; ly=y;
+    x=tx; y=ty;
+    return false;
+}
+function start(){
+    a=[]; q=[]; lock=false;
+    for(var i=0;i<n;i++){
+        a[i]=[];
+        for(var j=0;j<n;j++)
+            a[i][j]=i*n+j+1;
+    }
+    a[n-1][n-1]='';
+    for(var i=0;i<10000;i++)
+        move(Math.floor(Math.random()*4));
+    var $b=$("#board");
+    $b.empty();
+    for(var i=0;i<n;i++)
+        for(var j=0;j<n;j++)
+            if(a[i][j]!=''){
+                $b.append("<div class='square sq"+a[i][j]+"'>"+a[i][j]+"</div>");
+                $(".square:last").css("top",i*64+"px").css("left",j*64+"px");
+            }
+            $("#text").text("0");
+}
+function win(){
+    if(x!=n-1||y!=n-1) return;
+        for(var i=0;i<n;i++)
+            for(var j=0;j<n;j++)
+                if((i!=n-1||j!=n-1)&&a[i][j]!=i*n+j+1)
+                    return;
+    alert("You win!");
+    start();
+}
+function execute(){
+    var dir=q[0]; q.shift();
+    if(move(dir)) {
+        if(q.length>0) execute();
+        else lock=false;
+        return;
+    }
+    var $i=$(".sq"+a[lx][ly]);
+    var ani=[{top:"-=64px"},{left:"-=64px"},{top:"+=64px"},{left:"+=64px"}];
+    console.log($i.html(),dir,ani[dir]);
+    $i.animate(ani[dir],150,function(){
+        var cnt=$("#text").text();
+        $("#text").text(Number(cnt)+1);
+        win();
+        if(q.length>0) execute();
+        else lock=false;
+    });
+}
+$(function(){
+    start();
+    $(document).keypress(function(e){
+        var dir='WwAaSsDd'.indexOf(e.key);
+        if(dir==-1) return;
+        q.push(dir>>1);
+        if(!lock) { lock=true; execute(); }
+    });
+});
+
+</script>
+<style>
+
+div.square {
+    position: absolute;
+    width: 60px;
+    height: 49px;
+    margin: 2px;
+    padding-top: 11px;
+    background-color: #ddd;
+    font-size: 30px;
+    font-family: "Consolas";
+    text-align: center;
+}
+div#board {
+    position: relative;
+}
+div.text {
+    clear: left;
+    font-size: large;
+    font-family: "Consolas";
+}
+* {
+    cursor: default;
+}
+
+</style>
+
+</head>
+<body onselectstart="return false">
+
+<div class="text"><br/>&emsp;Move: <span id="text">0</span><br/><br/></div>
+<div id="board"></div>
+
+</body>
+</html>
