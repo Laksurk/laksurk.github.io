@@ -7,6 +7,7 @@
 <script src="../src/jquery.min.js"></script>
 <script>
 
+const the_time=2459755;
 var julian={
     c_month:[0,31,28,31,30,31,30,31,31,30,31,30,31],
     y:-4713, m:1, d:1,
@@ -48,7 +49,10 @@ $(function(){
         julian.nextDay();
         i++;
     }
-    $("div.title").append("Date: " + julian.print() + "&emsp;&emsp;Julian: " + i);
+    $("#main").append("Date: " + julian.print() + "&emsp;&emsp;Julian: " + i);
+    $("#time").append(the_time-i-1)
+        .css("top",($(document).height()-$("#time").height())/2-40)
+        .css("left",($(document).width()-$("#time").width())/2);
     $("#okJulian").click(function(){
         var j=Number($("#inputJulian").val());
         julian.init();
@@ -111,18 +115,25 @@ button {
     color: black;
     font-size: large;
 }
+#time {
+    position: fixed;
+    color: white;
+    font-size: 900%;
+}
 
 </style>
 
 </head>
 <body>
 
-<div class="title"></div>
+<div class="title" id="main"></div>
 <div class="calculator">
     <input id="inputJulian" />
     <button id="okJulian">-- Convert to Date --&gt;</button><button id="okDate">&lt;-- Convert to Julian --</button>
     <input id="inputYear" /><input id="inputMonth" /><input id="inputDate" /><button id="buttonBC">AD</button>
 </div>
+
+<div id="time"></div>
 
 </body>
 </html>
