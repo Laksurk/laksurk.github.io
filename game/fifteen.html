@@ -58,7 +58,6 @@ function execute(){
     }
     var $i=$(".sq"+a[lx][ly]);
     var ani=[{top:"-=64px"},{left:"-=64px"},{top:"+=64px"},{left:"+=64px"}];
-    console.log($i.html(),dir,ani[dir]);
     $i.animate(ani[dir],150,function(){
         var cnt=$("#text").text();
         $("#text").text(Number(cnt)+1);
