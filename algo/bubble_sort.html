@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8" />
+<title>Bubble Sort</title>
+<script src="../src/jquery.min.js"></script>
+<script>
+
+var n=8, delay_time=300, animation_time=100, width=50, gap=5, height=40;
+var Arr=[], queue=[];
+var pause=true;
+function init(){
+    for(var i=1;i<=n;i++)
+        Arr.push(i);
+    for(var i=Arr.length-1;i>0;i--){
+        var r=Math.floor(Math.random()*(i+1));
+        var t=Arr[i]; Arr[i]=Arr[r]; Arr[r]=t;
+    }
+}
+function draw(){
+    $("div.container").height(n*height+30);
+    $("div.flag").height(height)
+        .width(width)
+        .css("top",gap)
+        .css("left",100);
+    for(var i=0;i<n;i++){
+        $("div.container").append("<div class='number' id='"+i+"'></div>");
+        $("div.number:last").height(Arr[i]*height)
+            .width(width)
+            .css("left",100+i*(width+gap));
+    }
+}
+function get(i){
+    return $("div#"+i);
+}
+function generate(){
+    var k=n-1;
+    while(k>=0){
+        var flag=0;
+        for(var j=0;j<k;j++){
+            queue.push({cmd:"select", idx:j});
+            queue.push({cmd:"select", idx:j+1});
+            queue.push({cmd:"delay"});
+            if(Arr[j]>Arr[j+1]){
+                queue.push({cmd:"swap", idx1:j, idx2:j+1});
+                queue.push({cmd:"setflag", idx:j+1});
+                queue.push({cmd:"delay"});
+                flag=j+1;
+                var t=Arr[j]; Arr[j]=Arr[j+1]; Arr[j+1]=t;
+            }
+            queue.push({cmd:"unselect", idx:j});
+            queue.push({cmd:"unselect", idx:j+1});
+        }
+        queue.push({cmd:"initflag"});
+        for(;k>=flag;k--)
+            queue.push({cmd:"done", idx:k});
+        queue.push({cmd:"delay"});
+    }
+    queue.reverse();
+}
+function run(once){
+    while(queue.length>0){
+        if((!once)&&pause) return;
+        var item=queue.pop();
+        if(item.cmd=="delay"){
+            if(!once) setTimeout(run,delay_time);
+            return;
+        }
+        else if(item.cmd=="select")
+            get(item.idx).addClass("selected");
+        else if(item.cmd=="unselect")
+            get(item.idx).removeClass("selected");
+        else if(item.cmd=="done")
+            get(item.idx).addClass("done");
+        else if(item.cmd=="setflag"){
+            $("div.flag").animate({
+                left:100+item.idx*(width+gap)
+            },animation_time);
+        }
+        else if(item.cmd=="initflag"){
+            $("div.flag").css("left",100);
+        }
+        else if(item.cmd=="swap"){
+            var x=get(item.idx1), y=get(item.idx2);
+            x.animate({
+                left:"+="+(width+gap)
+            }, animation_time, "linear");
+            y.animate({
+                left:"-="+(width+gap)
+            }, animation_time, "linear");
+            x.attr("id",item.idx2);
+            y.attr("id",item.idx1);
+        }
+        else console.log("Unknown Command");
+    }
+    if(queue.length==0){
+        $("#run").hide();
+        $("#next").hide();
+    }
+}
+$(function(){
+    init();
+    draw();
+    generate();
+    $("#run").click(function(){
+        if(pause){
+            pause=false;
+            $("#run").text("Pause");
+            $("#next").hide();
+            run();
+        }
+        else{
+            $("#run").text("Run");
+            $("#next").show();
+            pause=true;
+        }
+    });
+    $("#next").click(function(){
+        run(true);
+    });
+});
+
+</script>
+<style>
+
+* {
+    margin: 0;
+    font-family: "Consolas","Ubuntu Mono";
+}
+div.number {
+    position: absolute;
+    bottom: 0;
+    background-color: rgb(0,63,255);
+}
+div.container {
+    position: relative;
+}
+div.selected {
+    background-color: rgb(37,214,255);
+}
+div.done {
+    background-color: rgb(46,255,99);
+}
+div.flag {
+    position: relative;
+    background-color: red;
+}
+div.text * {
+    position: relative;
+    left: 100px;
+    top: 15px;
+    font-size: 24px;
+    width: 80px;
+}
+
+</style>
+
+</head>
+<body>
+
+<div class="container"></div>
+<div class="flag"></div>
+<div class="text">
+    <button type="button" id="run">Run</button>
+    <button type="button" id="next">Next</button>
+</div>
+
+</body>
+</html>
