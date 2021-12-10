@@ -1,4 +1,4 @@
-## laksurk.github.io`
+## 索引
 
 ### 算法
 #### [冒泡排序](./algo/bubble_sort.html)
