@@ -7,9 +7,12 @@
 <script src="../src/jquery.min.js"></script>
 <script>
 
-var n=8, delay_time=300, animation_time=100, width=50, gap=5, height=40;
-var Arr=[], queue=[];
+const n=13, delay_time=300, animation_time=100, width=50, gap=5, height=40;
+var Arr=[], queue=[], ptr=0;
 var pause=true;
+function get(i){
+    return $("div#"+i);
+}
 function init(){
     for(var i=1;i<=n;i++)
         Arr.push(i);
@@ -30,9 +33,6 @@ function draw(){
             .width(width)
             .css("left",100+i*(width+gap));
     }
-}
-function get(i){
-    return $("div#"+i);
 }
 function generate(){
     var k=n-1;
@@ -55,14 +55,13 @@ function generate(){
         queue.push({cmd:"initflag"});
         for(;k>=flag;k--)
             queue.push({cmd:"done", idx:k});
-        queue.push({cmd:"delay"});
+        if(k>=0) queue.push({cmd:"delay"});
     }
-    queue.reverse();
 }
 function run(once){
-    while(queue.length>0){
+    while(ptr<queue.length){
         if((!once)&&pause) return;
-        var item=queue.pop();
+        var item=queue[ptr++];
         if(item.cmd=="delay"){
             if(!once) setTimeout(run,delay_time);
             return;
@@ -94,9 +93,10 @@ function run(once){
         }
         else console.log("Unknown Command");
     }
-    if(queue.length==0){
-        $("#run").hide();
+    if(ptr==queue.length){
+        $("#run").text("Reset");
         $("#next").hide();
+        $("#back").show();
     }
 }
 $(function(){
@@ -104,20 +104,36 @@ $(function(){
     draw();
     generate();
     $("#run").click(function(){
-        if(pause){
+        if($("#run").text()=="Reset"){
+            $("#run").text("Run");
+            $("#next").show();
+            $("#back").hide();
+            $("div.container").empty();
+            Arr.length=0;
+            queue.length=0;
+            init();
+            draw();
+            generate();
+            ptr=0;
+            pause=true;
+        }
+        else if(pause){
             pause=false;
             $("#run").text("Pause");
             $("#next").hide();
+            $("#back").hide();
             run();
         }
         else{
             $("#run").text("Run");
             $("#next").show();
+            $("#back").show();
             pause=true;
         }
     });
     $("#next").click(function(){
         run(true);
+        $("#back").show();
     });
 });
 
@@ -164,6 +180,7 @@ div.text * {
 <div class="text">
     <button type="button" id="run">Run</button>
     <button type="button" id="next">Next</button>
+    <!-- <button type="button" id="back" style="display:none">Back</button> -->
 </div>
 
 </body>
