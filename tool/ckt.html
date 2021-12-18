@@ -7,7 +7,7 @@
 <script src="../src/jquery.min.js"></script>
 <script>
 
-const n=4, side=120, square=50, menu=180, m=4;
+const n=10, side=120, square=50, menu=180, m=4;
 var mode=0;
 
 function paint(canvas, type){
@@ -81,13 +81,25 @@ $(function(){
     for(var x in table){
         paint(($(".menu canvas").eq(x))[0], table[x]);
     }
+    $(window).contextmenu(function(e){
+        e.preventDefault();
+    });
     $("canvas.board").click(function(){
-        if(mode==0){
-            $(".line").eq($(".board").index(this)).toggleClass("black");
-        }
-        else{
+        $(".line").eq($(".board").index(this)).addClass("black");
+        if(mode!=0){
             var data=$(".side")[mode].getContext("2d").getImageData(0,0,square,square);
             this.getContext("2d").putImageData(data,0,0);
+            $(this).addClass("full");
+        }
+    });
+    $("canvas.board").contextmenu(function(e){
+        if($(this).hasClass("full")){
+            this.width=this.width;
+            $(this).removeClass("full");
+        }
+        else{
+            var l=$(".line").eq($(".board").index(this));
+            l.toggleClass("black");
         }
     });
     $("canvas.side").click(function(){
@@ -96,10 +108,18 @@ $(function(){
         mode=$(".side").index(this);
     });
     $(window).keyup(function(e){
-        if(e.key!=" ") return;
-        $(".menu").toggle();
-        $(".square").toggleClass("outline");
-        $(".line:not(.black)").toggleClass("outline");
+        if(e.key==" "){
+            $(".menu").toggle();
+            $(".square").toggleClass("outline");
+            $(".line:not(.black)").toggleClass("outline");
+        }
+        else if(e.key=="`")
+            $(".side:first").click();
+        else{
+            var x=Number(e.key);
+            if(x<=0 || x>=m) return;
+            $(".side").eq(x).click();
+        }
     });
 });
 
