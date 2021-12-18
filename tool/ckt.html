@@ -10,6 +10,25 @@
 const n=10, side=120, square=50, menu=180, m=4;
 var mode=0;
 
+function encodeCKT(){
+    var obj={};
+    $(".board").each(function(idx){
+        if($(this).text()!="")
+            obj[idx]=Number($(this).text());
+    });
+    return JSON.stringify(obj);
+}
+function decodeCKT(str){
+    var obj=JSON.parse(str);
+    var _mode=mode;
+    $(".board").each(function(idx){
+        if(idx in obj){
+            $(".side").eq(obj[idx]).click();
+            $(this).click();
+        }
+    });
+    $(".side").eq(_mode).click();
+}
 function paint(canvas, type){
     const unit=square>>1;
     const ctx=canvas.getContext("2d");
@@ -33,12 +52,12 @@ function paint(canvas, type){
             ctx.lineTo(x, -x);
         },
         switch: function(){
-            ctx.rect(-1, -1, 2, 2);
+            ctx.rect(-1, -1, 1.8, 2);
             ctx.fillStyle="white";
             ctx.fill();
             ctx.beginPath();
             ctx.moveTo(-1, 0);
-            ctx.lineTo(1, 1);
+            ctx.lineTo(0.6, 1);
         },
         power: function(){
             ctx.rect(-0.15, -0.5, 0.3, 1);
@@ -86,20 +105,22 @@ $(function(){
     });
     $("canvas.board").click(function(){
         $(".line").eq($(".board").index(this)).addClass("black");
+        $(this).text(mode);
         if(mode!=0){
             var data=$(".side")[mode].getContext("2d").getImageData(0,0,square,square);
             this.getContext("2d").putImageData(data,0,0);
-            $(this).addClass("full");
         }
     });
     $("canvas.board").contextmenu(function(e){
-        if($(this).hasClass("full")){
+        if(Number($(this).text())>0){
             this.width=this.width;
-            $(this).removeClass("full");
+            $(this).text("0");
         }
         else{
             var l=$(".line").eq($(".board").index(this));
             l.toggleClass("black");
+            if(l.hasClass("black"))
+                $(this).text("0");
         }
     });
     $("canvas.side").click(function(){
