@@ -96,7 +96,7 @@ $(function(){
     $("div.line").width(side).css("margin-bottom",side);
     $("div.container").css("top",-side/2);
     $("#D").css("top",-side/2).css("left",-side/2);
-    const table=["line","bulb","switch","power"];
+    const table=["line","power","switch","bulb"];
     for(var x in table){
         paint(($(".menu canvas").eq(x))[0], table[x]);
     }
@@ -121,6 +121,8 @@ $(function(){
             l.toggleClass("black");
             if(l.hasClass("black"))
                 $(this).text("0");
+            else
+                $(this).text("");
         }
     });
     $("canvas.side").click(function(){
@@ -142,6 +144,11 @@ $(function(){
             $(".side").eq(x).click();
         }
     });
+    var data=localStorage.getItem("data");
+    if(data) decodeCKT(data);
+});
+$(window).unload(function(){
+    localStorage.setItem("data",encodeCKT());
 });
 
 </script>
