@@ -7,7 +7,8 @@
 <script src="../src/jquery.min.js"></script>
 <script>
 
-const n=10, side=120, sq=50, menu=180, m=4;
+const table=["line","power","switch","bulb","resistance","ammeter","voltmeter"];
+const m=table.length, n=10, side=120, sq=50, menu=180;
 var mode=0;
 
 function encodeCKT(){
@@ -36,6 +37,7 @@ function paint(canvas, type){
     ctx.translate(1, -1);
     ctx.lineWidth=2/unit;
     ctx.strokeStyle="black";
+    ctx.beginPath();
     const func={
         line: function(){
             ctx.moveTo(-1, 0);
@@ -43,7 +45,7 @@ function paint(canvas, type){
         },
         bulb: function(){
             const x=Math.sqrt(1/2);
-            ctx.arc(0, 0, 0.97, 0, Math.PI*2);
+            ctx.arc(0, 0, 0.95, 0, Math.PI*2);
             ctx.fillStyle="white";
             ctx.fill();
             ctx.moveTo(-x, -x);
@@ -52,12 +54,17 @@ function paint(canvas, type){
             ctx.lineTo(x, -x);
         },
         switch: function(){
-            ctx.rect(-1, -1, 1.8, 2);
+            ctx.rect(-0.8, -1, 1.8, 2);
             ctx.fillStyle="white";
             ctx.fill();
             ctx.beginPath();
-            ctx.moveTo(-1, 0);
+            ctx.moveTo(-0.9, 0);
             ctx.lineTo(0.6, 1);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(-0.87, 0, 0.1, 0, Math.PI*2);
+            ctx.fillStyle="white";
+            ctx.fill();
         },
         power: function(){
             ctx.rect(-0.15, -0.5, 0.3, 1);
@@ -68,9 +75,48 @@ function paint(canvas, type){
             ctx.lineTo(-0.15, -0.5);
             ctx.moveTo(0.15, 1);
             ctx.lineTo(0.15, -1);
+        },
+        resistance: function(){
+            ctx.rect(-0.95, -0.25, 1.94, 0.5);
+            ctx.fillStyle="white";
+            ctx.fill();
+        },
+        ammeter: function(){
+            ctx.arc(0, 0, 0.95, 0, Math.PI*2);
+            ctx.fillStyle="white";
+            ctx.fill();
+            ctx.stroke();
+            ctx.lineWidth=2.8/unit;
+            ctx.beginPath();
+            ctx.moveTo(-0.43, -0.6);
+            ctx.lineTo(0, 0.67);
+            ctx.lineTo(0.43, -0.6);
+            ctx.moveTo(-0.3, -0.2);
+            ctx.lineTo(0.3, -0.2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.rect(-0.1, 0.59, 0.2, 0.2);
+            ctx.fill();
+            ctx.beginPath();
+        },
+        voltmeter: function(){
+            ctx.arc(0, 0, 0.95, 0, Math.PI*2);
+            ctx.fillStyle="white";
+            ctx.fill();
+            ctx.stroke();
+            ctx.lineWidth=2.8/unit;
+            ctx.beginPath();
+            ctx.moveTo(-0.36, 0.48);
+            ctx.lineTo(0, -0.55);
+            ctx.lineTo(0.36, 0.48);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.rect(-0.1, -0.9, 0.2, 0.3);
+            ctx.fill();
+            ctx.beginPath();
         }
     };
-    func[type]();
+    if(type in func) func[type]();
     ctx.stroke();
 }
 $(function(){
@@ -98,7 +144,6 @@ $(function(){
     $("div.line").width(side).css("margin-bottom",side);
     $("div.container").css("top",-side/2);
     $("#D").css("top",-side/2).css("left",-side/2);
-    const table=["line","power","switch","bulb"];
     for(var x in table){
         paint(($(".menu canvas").eq(x))[0], table[x]);
     }
