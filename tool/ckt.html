@@ -8,6 +8,7 @@
 <script>
 
 const n=4, side=120, square=50, menu=180, m=4;
+var mode=0;
 
 function paint(canvas, type){
     const unit=square>>1;
@@ -17,19 +18,33 @@ function paint(canvas, type){
     ctx.lineWidth=2/unit;
     ctx.strokeStyle="black";
     const func={
+        line: function(){
+            ctx.moveTo(-1, 0);
+            ctx.lineTo(1, 0);
+        },
         bulb: function(){
             const x=Math.sqrt(1/2);
             ctx.arc(0, 0, 0.97, 0, Math.PI*2);
+            ctx.fillStyle="white";
+            ctx.fill();
             ctx.moveTo(-x, -x);
             ctx.lineTo(x, x);
             ctx.moveTo(-x, x);
             ctx.lineTo(x, -x);
         },
         switch: function(){
+            ctx.rect(-1, -1, 2, 2);
+            ctx.fillStyle="white";
+            ctx.fill();
+            ctx.beginPath();
             ctx.moveTo(-1, 0);
             ctx.lineTo(1, 1);
         },
         power: function(){
+            ctx.rect(-0.15, -0.5, 0.3, 1);
+            ctx.fillStyle="white";
+            ctx.fill();
+            ctx.beginPath();
             ctx.moveTo(-0.15, 0.5);
             ctx.lineTo(-0.15, -0.5);
             ctx.moveTo(0.15, 1);
@@ -50,21 +65,41 @@ $(function(){
     }
     for(var i=0;i<m;i++){
         $("div.menu").append("<canvas class='square side'"+c+"></canvas>");
+        if(i==0){
+            $(".menu canvas:first").addClass("selected");
+        }
     }
+    $(".square, .line").addClass("outline");
     $("div.menu").width(menu);
     $("div.container, div.main").css("padding","60px "+square/2+"px");
     $("div.outside").width(menu+side*(n+1)).css("left",menu);
     $("canvas.board").css("margin",(side-square)/2);
     $("div.line").width(side).css("margin-bottom",side);
-    
     $("div.container").css("top",-side/2);
     $("#D").css("top",-side/2).css("left",-side/2);
-    paint($(".menu canvas:eq(0)")[0], "bulb");
-    paint($(".menu canvas:eq(1)")[0], "switch");
-    paint($(".menu canvas:eq(2)")[0], "power");
-
+    const table=["line","bulb","switch","power"];
+    for(var x in table){
+        paint(($(".menu canvas").eq(x))[0], table[x]);
+    }
     $("canvas.board").click(function(){
-        $(".line").eq($(".board").index(this)).toggleClass("black");
+        if(mode==0){
+            $(".line").eq($(".board").index(this)).toggleClass("black");
+        }
+        else{
+            var data=$(".side")[mode].getContext("2d").getImageData(0,0,square,square);
+            this.getContext("2d").putImageData(data,0,0);
+        }
+    });
+    $("canvas.side").click(function(){
+        $(".side").eq(mode).removeClass("selected");
+        $(this).addClass("selected");
+        mode=$(".side").index(this);
+    });
+    $(window).keyup(function(e){
+        if(e.key!=" ") return;
+        $(".menu").toggle();
+        $(".square").toggleClass("outline");
+        $(".line:not(.black)").toggleClass("outline");
     });
 });
 
@@ -83,8 +118,12 @@ div.vertical {
 }
 canvas.square {
     display: block;
-    outline: grey dashed 1px;
+    position: relative;
     pointer-events: auto;
+    z-index: 2;
+}
+canvas.outline {
+    outline: grey dashed 1px;
 }
 canvas.board {
     float: left;
@@ -92,6 +131,8 @@ canvas.board {
 div.line {
     position: relative;
     float: left;
+}
+div.outline {
     outline: 1px #ccc solid;
 }
 div.menu {
@@ -106,7 +147,10 @@ canvas.side {
 }
 div.black {
     outline-color: black;
-    z-index: 2;
+    z-index: 1;
+}
+canvas.selected {
+    outline: red solid 1px;
 }
 
 </style>
