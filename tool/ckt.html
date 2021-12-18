@@ -7,7 +7,7 @@
 <script src="../src/jquery.min.js"></script>
 <script>
 
-const n=10, side=120, square=50, menu=180, m=4;
+const n=10, side=120, sq=50, menu=180, m=4;
 var mode=0;
 
 function encodeCKT(){
@@ -30,7 +30,7 @@ function decodeCKT(str){
     $(".side").eq(_mode).click();
 }
 function paint(canvas, type){
-    const unit=square>>1;
+    const unit=sq>>1;
     const ctx=canvas.getContext("2d");
     ctx.scale(unit, -unit);
     ctx.translate(1, -1);
@@ -74,7 +74,7 @@ function paint(canvas, type){
     ctx.stroke();
 }
 $(function(){
-    const c=" width= '"+square+"' height= '"+square+"'";
+    const c=" width= '"+sq+"' height= '"+sq+"'";
     for(var i=0;i<=n;i++){
         for(var j=0;j<n;j++){
             $("div.container").append("<canvas class='square board'"+c+"></canvas>");
@@ -88,11 +88,13 @@ $(function(){
             $(".menu canvas:first").addClass("selected");
         }
     }
+    $("#open, #save").width(sq).height(sq/2)
+        .css("font-size",sq*0.4).css("line-height",sq/2+"px");
     $(".square, .line").addClass("outline");
     $("div.menu").width(menu);
-    $("div.container, div.main").css("padding","60px "+square/2+"px");
+    $("div.container, div.main").css("padding","60px "+sq/2+"px");
     $("div.outside").width(menu+side*(n+1)).css("left",menu);
-    $("canvas.board").css("margin",(side-square)/2);
+    $("canvas.board").css("margin",(side-sq)/2);
     $("div.line").width(side).css("margin-bottom",side);
     $("div.container").css("top",-side/2);
     $("#D").css("top",-side/2).css("left",-side/2);
@@ -107,7 +109,7 @@ $(function(){
         $(".line").eq($(".board").index(this)).addClass("black");
         $(this).text(mode);
         if(mode!=0){
-            var data=$(".side")[mode].getContext("2d").getImageData(0,0,square,square);
+            var data=$(".side")[mode].getContext("2d").getImageData(0,0,sq,sq);
             this.getContext("2d").putImageData(data,0,0);
         }
     });
@@ -125,7 +127,7 @@ $(function(){
                 $(this).text("");
         }
     });
-    $("canvas.side").click(function(){
+    $(".side").click(function(){
         $(".side").eq(mode).removeClass("selected");
         $(this).addClass("selected");
         mode=$(".side").index(this);
@@ -144,6 +146,17 @@ $(function(){
             $(".side").eq(x).click();
         }
     });
+    $("#save").click(function(){
+        var a=document.createElement("a");
+        a.download="download.ckt";
+        a.href=URL.createObjectURL(new Blob([encodeCKT()]));
+        a.click();
+    });
+    var data=localStorage.getItem("data");
+    if(data) decodeCKT(data);
+    $("#open").click(function(){
+        console.log("Error! Please contact the author.");
+    });
     var data=localStorage.getItem("data");
     if(data) decodeCKT(data);
 });
@@ -156,13 +169,14 @@ $(window).unload(function(){
 
 * {
     margin: 0;
+    cursor: default;
 }
 div.container, div.main {
     position: absolute;
     pointer-events: none;
 }
 div.vertical {
-    rotate: 90deg;
+    transform: rotate(90deg);
 }
 canvas.square {
     display: block;
@@ -200,18 +214,31 @@ div.black {
 canvas.selected {
     outline: red solid 1px;
 }
+#save, #open {
+    outline: #666 solid 1px;
+    margin: 1px auto;
+    text-align: center;
+    font-family: 'Consolas', 'Ubuntu Mono';
+    color: #666;
+}
+#save:hover, #open:hover {
+    color: blue;
+}
 
 </style>
 
 </head>
-<body>
+<body onselectstart="return false">
 
-<div class="menu"></div>
+<div class="menu">
+    <div id="save">SAVE</div>
+    <div id="open">OPEN</div>
+</div>
 <div class="outside">
-<div class="main" id="C"></div>
-<div class="main vertical" id="D"></div>
-<div class="container" id="A"></div>
-<div class="container vertical" id="B"></div>
+    <div class="main" id="C"></div>
+    <div class="main vertical" id="D"></div>
+    <div class="container" id="A"></div>
+    <div class="container vertical" id="B"></div>
 </div>
 
 </body>
