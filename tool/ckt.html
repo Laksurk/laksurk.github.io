@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8" />
+<title>电路绘制工具</title>
+<script src="../src/jquery.min.js"></script>
+<script>
+
+const n=4, side=120, square=50, menu=180, m=4;
+
+function paint(canvas, type){
+    const unit=square>>1;
+    const ctx=canvas.getContext("2d");
+    ctx.scale(unit, -unit);
+    ctx.translate(1, -1);
+    ctx.lineWidth=2/unit;
+    ctx.strokeStyle="black";
+    const func={
+        bulb: function(){
+            const x=Math.sqrt(1/2);
+            ctx.arc(0, 0, 0.97, 0, Math.PI*2);
+            ctx.moveTo(-x, -x);
+            ctx.lineTo(x, x);
+            ctx.moveTo(-x, x);
+            ctx.lineTo(x, -x);
+        },
+        switch: function(){
+            ctx.moveTo(-1, 0);
+            ctx.lineTo(1, 1);
+        },
+        power: function(){
+            ctx.moveTo(-0.15, 0.5);
+            ctx.lineTo(-0.15, -0.5);
+            ctx.moveTo(0.15, 1);
+            ctx.lineTo(0.15, -1);
+        }
+    };
+    func[type]();
+    ctx.stroke();
+}
+$(function(){
+    const c=" width= '"+square+"' height= '"+square+"'";
+    for(var i=0;i<=n;i++){
+        for(var j=0;j<n;j++){
+            $("div.container").append("<canvas class='square board'"+c+"></canvas>");
+            $("div.main").append("<div class='line'></div>");
+            if(j==0) $("#A :last, #B :last, #C :last, #D :last").css("clear","both");
+        }
+    }
+    for(var i=0;i<m;i++){
+        $("div.menu").append("<canvas class='square side'"+c+"></canvas>");
+    }
+    $("div.menu").width(menu);
+    $("div.container, div.main").css("padding","60px "+square/2+"px");
+    $("div.outside").width(menu+side*(n+1)).css("left",menu);
+    $("canvas.board").css("margin",(side-square)/2);
+    $("div.line").width(side).css("margin-bottom",side);
+    
+    $("div.container").css("top",-side/2);
+    $("#D").css("top",-side/2).css("left",-side/2);
+    paint($(".menu canvas:eq(0)")[0], "bulb");
+    paint($(".menu canvas:eq(1)")[0], "switch");
+    paint($(".menu canvas:eq(2)")[0], "power");
+
+    $("canvas.board").click(function(){
+        $(".line").eq($(".board").index(this)).toggleClass("black");
+    });
+});
+
+</script>
+<style>
+
+* {
+    margin: 0;
+}
+div.container, div.main {
+    position: absolute;
+    pointer-events: none;
+}
+div.vertical {
+    rotate: 90deg;
+}
+canvas.square {
+    display: block;
+    outline: grey dashed 1px;
+    pointer-events: auto;
+}
+canvas.board {
+    float: left;
+}
+div.line {
+    position: relative;
+    float: left;
+    outline: 1px #ccc solid;
+}
+div.menu {
+    position: fixed;
+    padding-top: 50px;
+}
+div.outside {
+    position: fixed;
+}
+canvas.side {
+    margin: 30px auto;
+}
+div.black {
+    background-color: black;
+    z-index: 2;
+}
+
+</style>
+
+</head>
+<body>
+
+<div class="menu"></div>
+<div class="outside">
+<div class="main" id="C"></div>
+<div class="main vertical" id="D"></div>
+<div class="container" id="A"></div>
+<div class="container vertical" id="B"></div>
+</div>
+
+</body>
+</html>
