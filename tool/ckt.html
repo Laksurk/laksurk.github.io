@@ -180,6 +180,7 @@ $(function(){
     $(window).keyup(function(e){
         if(e.key==" "){
             $(".menu").toggle();
+            $("#mask").toggle();
             $(".square").toggleClass("outline");
             $(".line:not(.black)").toggleClass("outline");
         }
@@ -197,8 +198,6 @@ $(function(){
         a.href=URL.createObjectURL(new Blob([encodeCKT()]));
         a.click();
     });
-    var data=localStorage.getItem("data");
-    if(data) decodeCKT(data);
     $("#open").click(function(){
         console.log("Error! Please contact the author.");
     });
@@ -269,6 +268,15 @@ canvas.selected {
 #save:hover, #open:hover {
     color: blue;
 }
+#mask {
+    display: none;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    background-color: transparent;
+}
 
 </style>
 
@@ -285,6 +293,7 @@ canvas.selected {
     <div class="container" id="A"></div>
     <div class="container vertical" id="B"></div>
 </div>
+<div id="mask"></div>
 
 </body>
 </html>
