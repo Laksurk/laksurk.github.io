@@ -11,3 +11,7 @@
 #### [移球游戏](./game/ball.html)
 #### [Emacs-5x5](./game/card.html)
 #### [数字华容道](./game/fifteen.html)
+
+### 文档
+#### [音调大全1](./docu/tones1.html)
+#### [音调大全2](./docu/tones2.html)
