@@ -13,5 +13,5 @@
 #### [数字华容道](./game/fifteen.html)
 
 ### 文档
-#### [音调大全1](./docu/tones1.html)
-#### [音调大全2](./docu/tones2.html)
+#### [音调大全1](./docu/tones1.txt)
+#### [音调大全2](./docu/tones2.txt)
