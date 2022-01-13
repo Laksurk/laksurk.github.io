@@ -156,6 +156,10 @@ $(function(){
         if(mode!=0){
             const data=$(".side")[mode].getContext("2d").getImageData(0,0,sq,sq);
             this.getContext("2d").putImageData(data,0,0);
+            if($(this).parent().hasClass("vertical"))
+                if(table[mode]=="ammeter"||table[mode]=="voltmeter")
+                    $(this).addClass("rotate");
+                else $(this).removeClass("rotate");
         }
     });
     $("canvas.board").contextmenu(function(e){
@@ -222,7 +226,7 @@ div.container, div.main {
 div.vertical {
     transform: rotate(90deg);
 }
-div.vertical canvas {
+canvas.rotate {
     transform: rotate(-90deg);
 }
 canvas.square {
