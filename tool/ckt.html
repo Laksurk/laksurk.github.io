@@ -195,7 +195,7 @@ $(function(){
             $("#mask").toggle();
             $(".square").toggleClass("outline");
             $(".line:not(.black)").toggleClass("outline");
-            $(".grey_circle").toggle();
+            $(".grey_circle").toggleClass("trans_circle");
         }
         else if(e.key=="`")
             $(".side:first").click();
@@ -250,7 +250,7 @@ canvas.outline {
 canvas.board {
     float: left;
 }
-div.line, div.circle{
+div.line, div.circle {
     position: relative;
     float: left;
 }
@@ -296,9 +296,14 @@ canvas.selected {
 div.circle {
     border-radius: 50%;
     background-color: black;
+    z-index: 5;
 }
 div.grey_circle {
     background-color: #ccc;
+    z-index: -1;
+}
+div.trans_circle {
+    background-color: transparent;
 }
 
 </style>
