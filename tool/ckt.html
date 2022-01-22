@@ -8,7 +8,7 @@
 <script>
 
 const table=["line","power","switch","bulb","resistance","ammeter","voltmeter"];
-const m=table.length, n=10, side=120, sq=50, menu=180;
+const m=table.length, n=10, side=120, sq=side*(5/12), menu=180, circle=8;
 var mode=0;
 
 function encodeCKT(){
@@ -125,8 +125,10 @@ $(function(){
         for(let j=0;j<n;j++){
             $("div.container").append("<canvas class='square board'"+c+"></canvas>");
             $("div.main").append("<div class='line'></div>");
-            if(j==0) $("#A :last, #B :last, #C :last, #D :last").css("clear","both");
+            $("div.circles").append("<div class='circle grey_circle'></div>");
+            if(j==0) $("#A :last, #B :last, #C :last, #D :last, #E :last").css("clear","both");
         }
+        $("div.circles").append("<div class='circle grey_circle'></div>");
     }
     for(let i=0;i<m;i++){
         $("div.menu").append("<canvas class='square side'"+c+"></canvas>");
@@ -138,7 +140,10 @@ $(function(){
         .css("font-size",sq*0.4).css("line-height",sq/2+"px");
     $(".square, .line").addClass("outline");
     $("div.menu").width(menu);
-    $("div.container, div.main").css("padding","60px "+sq/2+"px");
+    $("div.container, div.main, div.circles").css("padding","60px "+sq/2+"px");
+    $("div.circle").width(circle).height(circle)
+        .css("margin-right",side-circle+"px").css("margin-bottom",side-circle+"px")
+        .css("left",-circle/2+"px").css("top",-circle/2+"px");
     $("div.outside").width(menu+side*(n+1)).css("left",menu);
     $("canvas.board").css("margin",(side-sq)/2);
     $("div.line").width(side).css("margin-bottom",side);
@@ -152,8 +157,8 @@ $(function(){
     });
     $("canvas.board").click(function(){
         $(".line").eq($(".board").index(this)).addClass("black");
-        $(this).text(mode);
         if(mode!=0){
+            $(this).text(mode);
             const data=$(".side")[mode].getContext("2d").getImageData(0,0,sq,sq);
             this.getContext("2d").putImageData(data,0,0);
             if($(this).parent().hasClass("vertical"))
@@ -176,6 +181,9 @@ $(function(){
                 $(this).text("");
         }
     });
+    $(".circle").click(function(){
+        $(this).toggleClass("grey_circle");
+    });
     $(".side").click(function(){
         $(".side").eq(mode).removeClass("selected");
         $(this).addClass("selected");
@@ -187,6 +195,7 @@ $(function(){
             $("#mask").toggle();
             $(".square").toggleClass("outline");
             $(".line:not(.black)").toggleClass("outline");
+            $(".grey_circle").toggle();
         }
         else if(e.key=="`")
             $(".side:first").click();
@@ -219,7 +228,7 @@ $(window).unload(function(){
     margin: 0;
     cursor: default;
 }
-div.container, div.main {
+div.container, div.main, div.points {
     position: absolute;
     pointer-events: none;
 }
@@ -241,7 +250,7 @@ canvas.outline {
 canvas.board {
     float: left;
 }
-div.line {
+div.line, div.circle{
     position: relative;
     float: left;
 }
@@ -284,6 +293,13 @@ canvas.selected {
     left: 0;
     background-color: transparent;
 }
+div.circle {
+    border-radius: 50%;
+    background-color: black;
+}
+div.grey_circle {
+    background-color: #ccc;
+}
 
 </style>
 
@@ -299,6 +315,7 @@ canvas.selected {
     <div class="main vertical" id="D"></div>
     <div class="container" id="A"></div>
     <div class="container vertical" id="B"></div>
+    <div class="circles" id="E"></div>
 </div>
 <div id="mask"></div>
 
