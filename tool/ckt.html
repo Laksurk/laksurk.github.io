@@ -12,10 +12,14 @@ const m=table.length, n=10, side=120, sq=side*(5/12), menu=180, circle=8;
 var mode=0;
 
 function encodeCKT(){
-    let obj={};
+    let obj={node:[]};
     $(".board").each(function(idx){
         if($(this).text()!="")
             obj[idx]=Number($(this).text());
+    });
+    $(".circle").each(function(idx){
+        if(!$(this).hasClass("grey_circle"))
+            obj["node"].push(idx);
     });
     return JSON.stringify(obj);
 }
@@ -28,6 +32,8 @@ function decodeCKT(str){
             $(this).click();
         }
     });
+    for(const idx of obj.node)
+        $(".circle").eq(idx).click();
     $(".side").eq(_mode).click();
 }
 function paint(canvas, type){
@@ -157,7 +163,11 @@ $(function(){
     });
     $("canvas.board").click(function(){
         $(".line").eq($(".board").index(this)).addClass("black");
-        if(mode!=0){
+        if(mode==0){
+            this.width=this.width;
+            $(this).text("0");
+        }
+        else{
             $(this).text(mode);
             const data=$(".side")[mode].getContext("2d").getImageData(0,0,sq,sq);
             this.getContext("2d").putImageData(data,0,0);
