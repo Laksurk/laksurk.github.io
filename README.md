@@ -6,6 +6,7 @@
 ### 工具
 #### [儒略日查询](./tool/julian.html)
 #### [电路绘制](./tool/ckt.html)
+#### [数论工具](./tool/number.html)
 
 ### 游戏
 #### [移球游戏](./game/ball.html)

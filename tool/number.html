@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8" />
+<title>数论工具</title>
+<script src="../src/jquery.min.js"></script>
+<script src="./number.js"></script>
+<script>
+
+function create_task(title, func){
+    $("#" + title).find("button#calc").click(function(){
+        const input = $("#" + title).find("input").val();
+        const result = func(input);
+        $("#" + title).find("span#result").text(result);
+    });
+}
+$(function(){
+    create_task("prime", function(text){
+        const x = BigInt(text);
+        if(x <= 1n) return "输入不合法";
+        return MillerRabin(x) ? (x <= (1n << 64n) ? "素数" : "可能是素数") : "合数";
+    });
+});
+
+</script>
+<style>
+
+body {
+    margin: 0;
+}
+div.container {
+    position: fixed;
+    height: 100%;
+    left: 15%;
+    width: calc(100% - (15% + 30px) * 2);
+    padding: 30px;
+    padding-top: 10px;
+    
+    background-color: #ddf2fc;
+}
+p, input {
+    font-size: 20px;
+}
+button {
+    position: relative;
+    top: -1px;
+    left: 1px;
+    width: 30px;
+    font-size: 18px;
+    font-weight: bolder;
+}
+input {
+    width: 11em;
+}
+i {
+    color: grey;
+}
+
+</style>
+
+</head>
+<body>
+<div class="container">
+
+<h1>素数检验</h1>
+<div id="prime">
+    <p><b>输入要求&emsp;</b>大于 1 的自然数.</p>
+    <p><b>功能提示&emsp;</b>检验自然数是否为素数. 仅在 2^64 以内保证准确性.</p>
+    <input id="0"/><button id="calc">✓</button>
+    <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
+</div>
+
+</div>
+</body>
+</html>
