@@ -21,6 +21,13 @@ $(function(){
         if(x <= 1n) return "输入不合法";
         return MillerRabin(x) ? (x <= (1n << 64n) ? "素数" : "可能是素数") : "合数";
     });
+    create_task("factorize", function(text){
+        const x = BigInt(text);
+        if(x <= 1n) return "输入不合法";
+        let l = Factorize(x);
+        console.log(l, l.join(" * "));
+        return l.length == 1 ? x + " 是素数" : x + " = " + l.join(" * ");
+    });
 });
 
 </script>
@@ -39,6 +46,12 @@ div.container {
     
     background-color: #ddf2fc;
 }
+h1 {
+    font-size: 28px;
+}
+b {
+    color: #00498a;
+}
 p, input {
     font-size: 20px;
 }
@@ -56,6 +69,9 @@ input {
 i {
     color: grey;
 }
+hr {
+    color: #052070;
+}
 
 </style>
 
@@ -67,6 +83,14 @@ i {
 <div id="prime">
     <p><b>输入要求&emsp;</b>大于 1 的自然数.</p>
     <p><b>功能提示&emsp;</b>检验自然数是否为素数. 仅在 2^64 以内保证准确性.</p>
+    <input id="0"/><button id="calc">✓</button>
+    <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
+</div>
+<hr/>
+<h1>整数分解</h1>
+<div id="factorize">
+    <p><b>输入要求&emsp;</b>大于 1、小于 2^64 的自然数.</p>
+    <p><b>功能提示&emsp;</b>将整数分解为素数乘积形式.</p>
     <input id="0"/><button id="calc">✓</button>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
