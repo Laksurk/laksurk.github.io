@@ -10,9 +10,12 @@
 
 function create_task(title, func){
     $("#" + title).find("button#calc").click(function(){
-        const input = $("#" + title).find("input").val();
-        const result = func(input);
-        $("#" + title).find("span#result").text(result);
+        let input = [];
+        $("#" + title).find("input").each(function(){
+            input.push($(this).val());
+        });
+        if(input.indexOf("") == -1)
+            $("#" + title).find("span#result").html(func(input));
     });
 }
 $(function(){
@@ -24,11 +27,17 @@ $(function(){
     create_task("factorize", function(text){
         const x = BigInt(text);
         if(x <= 1n || x >= (1n << 64n)) return "输入不合法";
-        let l = Factorize(x);
+        const l = Factorize(x);
         return l.length == 1 ? x + " 是素数" : x + " = " + l.join(" * ");
     });
+    create_task("qpow", function(text){
+        const[x, y, z] = text.map(BigInt);
+        if(z <= 1n) return "输入不合法";
+        return x + " ^ " + y + " mod " + z + " = " + qpow(x, y, z);
+    });
     $("input").on("input", function(){
-        $(this).val($(this).val().replace(/[^\d]/g, ''));
+        $(this).val($(this).val().replace(/[^\d]/g, ''))
+               .nextAll("button#calc").click();
     });
 });
 
@@ -39,7 +48,7 @@ body {
     margin: 0;
 }
 div.container {
-    position: fixed;
+    position: relative;
     height: 100%;
     left: 15%;
     width: calc(100% - (15% + 30px) * 2);
@@ -65,9 +74,9 @@ button {
     font-size: 18px;
     font-weight: bolder;
 }
-input {
-    width: 11em;
-}
+#prime     input { width: 11em; }
+#factorize input { width: 11em; }
+#qpow      input { width:  7em; }
 i {
     color: grey;
 }
@@ -93,7 +102,15 @@ hr {
 <div id="factorize">
     <p><b>输入要求&emsp;</b>大于 1、小于 2^64 的自然数.</p>
     <p><b>功能提示&emsp;</b>将整数分解为素数乘积形式.</p>
-    <input id="0"/><button id="calc">✓</button>
+    <p><input id="0"/><button id="calc">✓</button></p>
+    <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
+</div>
+<hr/>
+<h1>模意义整数幂</h1>
+<div id="qpow">
+    <p><b>输入要求&emsp;</b>均为自然数，且模数大于 1.</p>
+    <p><b>功能提示&emsp;</b>求底数在模意义下的指数幂.</p>
+    <p>【底数】<input id="0"/>【指数】<input id="1"/>【模数】<input id="2"/><span></span><button id="calc">✓</button></p>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
 
