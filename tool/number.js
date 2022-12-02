@@ -1,4 +1,3 @@
-// Precondition: n is a natural number, 2 <= n <= 2^64
 function qpow(n, k, p) {
     let ans = 1n;
     for(; k > 0n; k >>= 1n) {
@@ -43,6 +42,7 @@ function rand80() {
 }
 // random integer in [l, r)
 function rand(l, r) { return rand80() % (r - l) + l; }
+// Precondition: n is a natural number, 2 <= n <= 2^64
 function MillerRabin(n) {
     function check(base, n, d, r) {
         if(base % n == 0n) return true;

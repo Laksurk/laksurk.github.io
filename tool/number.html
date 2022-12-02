@@ -19,14 +19,16 @@ $(function(){
     create_task("prime", function(text){
         const x = BigInt(text);
         if(x <= 1n) return "输入不合法";
-        return MillerRabin(x) ? (x <= (1n << 64n) ? "素数" : "可能是素数") : "合数";
+        return MillerRabin(x) ? (x < (1n << 64n) ? "素数" : "可能是素数") : "合数";
     });
     create_task("factorize", function(text){
         const x = BigInt(text);
-        if(x <= 1n) return "输入不合法";
+        if(x <= 1n || x >= (1n << 64n)) return "输入不合法";
         let l = Factorize(x);
-        console.log(l, l.join(" * "));
         return l.length == 1 ? x + " 是素数" : x + " = " + l.join(" * ");
+    });
+    $("input").on("input", function(){
+        $(this).val($(this).val().replace(/[^\d]/g, ''));
     });
 });
 
@@ -57,9 +59,9 @@ p, input {
 }
 button {
     position: relative;
-    top: -1px;
     left: 1px;
-    width: 30px;
+    width: 31px;
+    height: 31px;
     font-size: 18px;
     font-weight: bolder;
 }
