@@ -8,7 +8,7 @@
 <script src="./number.js"></script>
 <script>
 
-function create_task(toolname, func){
+function create_tool(toolname, func){
     const tool = $("div.tool#" + toolname);
     tool.find("input").on("input", function(){
         $(this).val($(this).val().replace(/[^\d]/g, ''));
@@ -20,21 +20,27 @@ function create_task(toolname, func){
     });
 }
 $(function(){
-    create_task("prime", function(text){
+    create_tool("prime", function(text){
         const x = BigInt(text);
         if(x <= 1n) return "输入不合法";
         return MillerRabin(x) ? (x < (1n << 64n) ? "素数" : "可能是素数") : "合数";
     });
-    create_task("factorize", function(text){
+    create_tool("factorize", function(text){
         const x = BigInt(text);
         if(x <= 1n || x >= (1n << 64n)) return "输入不合法";
         const l = Factorize(x);
         return l.length == 1 ? x + " 是素数" : x + " = " + l.join(" * ");
     });
-    create_task("qpow", function(text){
+    create_tool("qpow", function(text){
         const[x, y, z] = text.map(BigInt);
         if(z <= 1n) return "输入不合法";
-        return x + " ^ " + y + " mod " + z + " = " + qpow(x, y, z);
+        return x + "<sup>" + y + "</sup> mod " + z + " = " + qpow(x, y, z);
+    });
+    create_tool("inv", function(text){
+        const[x, y] = text.map(BigInt);
+        if(y <= 1n) return "输入不合法";
+        const i = inv(x, y);
+        return i === -1 ? "输入不合法" : x + "<sup>-1</sup> mod " + y + " = " + i;
     });
 });
 
@@ -63,9 +69,9 @@ b {
 p, input {
     font-size: 20px;
 }
-#prime     input { width: 11em; }
-#factorize input { width: 11em; }
-#qpow      input { width:  7em; }
+input {
+    width: 11em;
+}
 i {
     color: grey;
 }
@@ -79,10 +85,10 @@ hr {
 <body>
 <div class="container">
 
-<h1>素数检验</h1>
+<h1>素性测试</h1>
 <div class="tool" id="prime">
     <p><b>输入要求&emsp;</b>大于 1 的自然数.</p>
-    <p><b>功能提示&emsp;</b>检验自然数是否为素数. 仅在 2^64 以内保证准确性.</p>
+    <p><b>功能提示&emsp;</b>检验输入是否为素数. 仅在 2^64 以内保证准确性.</p>
     <p><input id="0"/></p>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
@@ -90,18 +96,27 @@ hr {
 <h1>整数分解</h1>
 <div class="tool" id="factorize">
     <p><b>输入要求&emsp;</b>大于 1、小于 2^64 的自然数.</p>
-    <p><b>功能提示&emsp;</b>将整数分解为素数乘积形式.</p>
+    <p><b>功能提示&emsp;</b>将输入分解为素数乘积形式.</p>
     <p><input id="0"/></p>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
 <hr/>
-<h1>模意义整数幂</h1>
+<h1>模意义自然数幂</h1>
 <div class="tool" id="qpow">
     <p><b>输入要求&emsp;</b>均为自然数，且模数大于 1.</p>
     <p><b>功能提示&emsp;</b>求底数在模意义下的指数幂.</p>
     <p>【底数】<input id="0"/>【指数】<input id="1"/>【模数】<input id="2"/></p>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
+<hr/>
+<h1>模意义倒数</h1>
+<div class="tool" id="inv">
+    <p><b>输入要求&emsp;</b>均为自然数，模数大于 1，且底数与模数互质.</p>
+    <p><b>功能提示&emsp;</b>求底数在模意义下的倒数（即逆元）.</p>
+    <p>【底数】<input id="0"/>【模数】<input id="1"/></p>
+    <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
+</div>
+
 
 </div>
 </body>

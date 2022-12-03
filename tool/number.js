@@ -12,14 +12,35 @@ function __builtin_ctz(n) {
         n >>= 1n;
     }
 }
+function abs(n) { return n >= 0n ? n : -n; }
 function __gcd(m, n) {
-    while (n != 0) {
+    while (n != 0n) {
         let t = m % n;
         m = n;
         n = t;
     }
     return m;
 }
+// Precondition: m, n are natural numbers
+function __exgcd(m, n) {
+    if(n == 0n) return [1n, 0n, m];
+    const[x, y, g] = __exgcd(n, m % n);
+    return [y, x - m / n * y, g];
+}
+// Precondition: m, n, c are integers
+// Return: [x, y], x is the minimum natural solution (-1 if no solutions)
+function exgcd(m, n, c) {
+    let[x, y, g] = __exgcd(abs(m), abs(n));
+    if(c % g != 0) return [-1, 0];
+    if(m < 0n) x = -x;
+    if(n < 0n) y = -y;
+    x *= c / g;
+    y *= c / g;
+    const k = x / (n / g) + (x < 0n ? 1n : 0n);
+    return [x + k * (n / g), y - k * (m / g)];
+}
+// Precondition: m, n are integers
+function inv(m, n) { return exgcd(m, n, 1n)[0]; }
 // random integer in [0, 2^16)
 var rand16 = function(){
     var r = 1n;
@@ -62,7 +83,7 @@ function MillerRabin(n) {
         if(!check(base, n, d, r)) return false;
     return true;
 }
-// Precondiction: n is a composite number, 4 <= n <= 2^64
+// Precondition: n is a composite number, 4 <= n <= 2^64
 function PollardRho(n) {
     if(n == 4n) return 2n;
     while(true) {
@@ -73,7 +94,7 @@ function PollardRho(n) {
         let p = 0n, q = 0n, prod = 1n;
         for(let cnt = 0; ;++cnt) {
             p = next(p); q = next(next(q));
-            const x = prod * (p > q ? p - q : q - p) % n;
+            const x = prod * abs(p - q) % n;
             if(p == q || x == 0 || cnt == 64) {
                 const d = __gcd(prod, n);
                 if(d > 1) return d;
@@ -84,7 +105,7 @@ function PollardRho(n) {
         };
     }
 }
-// Precondiction: n is a natural number, 2 <= n <= 2^64
+// Precondition: n is a natural number, 2 <= n <= 2^64
 function Factorize(n) {
     let l = [n], ans = [];
     while(l.length > 0) {
