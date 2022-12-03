@@ -8,14 +8,15 @@
 <script src="./number.js"></script>
 <script>
 
-function create_task(title, func){
-    $("#" + title).find("button#calc").click(function(){
+function create_task(toolname, func){
+    const tool = $("div.tool#" + toolname);
+    tool.find("input").on("input", function(){
+        $(this).val($(this).val().replace(/[^\d]/g, ''));
         let input = [];
-        $("#" + title).find("input").each(function(){
+        tool.find("input").each(function(){
             input.push($(this).val());
         });
-        if(input.indexOf("") == -1)
-            $("#" + title).find("span#result").html(func(input));
+        tool.find("span#result").html(input.indexOf("") == -1 ? func(input): "");
     });
 }
 $(function(){
@@ -34,10 +35,6 @@ $(function(){
         const[x, y, z] = text.map(BigInt);
         if(z <= 1n) return "输入不合法";
         return x + " ^ " + y + " mod " + z + " = " + qpow(x, y, z);
-    });
-    $("input").on("input", function(){
-        $(this).val($(this).val().replace(/[^\d]/g, ''))
-               .nextAll("button#calc").click();
     });
 });
 
@@ -66,14 +63,6 @@ b {
 p, input {
     font-size: 20px;
 }
-button {
-    position: relative;
-    left: 1px;
-    width: 31px;
-    height: 31px;
-    font-size: 18px;
-    font-weight: bolder;
-}
 #prime     input { width: 11em; }
 #factorize input { width: 11em; }
 #qpow      input { width:  7em; }
@@ -91,26 +80,26 @@ hr {
 <div class="container">
 
 <h1>素数检验</h1>
-<div id="prime">
+<div class="tool" id="prime">
     <p><b>输入要求&emsp;</b>大于 1 的自然数.</p>
     <p><b>功能提示&emsp;</b>检验自然数是否为素数. 仅在 2^64 以内保证准确性.</p>
-    <input id="0"/><button id="calc">✓</button>
+    <p><input id="0"/></p>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
 <hr/>
 <h1>整数分解</h1>
-<div id="factorize">
+<div class="tool" id="factorize">
     <p><b>输入要求&emsp;</b>大于 1、小于 2^64 的自然数.</p>
     <p><b>功能提示&emsp;</b>将整数分解为素数乘积形式.</p>
-    <p><input id="0"/><button id="calc">✓</button></p>
+    <p><input id="0"/></p>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
 <hr/>
 <h1>模意义整数幂</h1>
-<div id="qpow">
+<div class="tool" id="qpow">
     <p><b>输入要求&emsp;</b>均为自然数，且模数大于 1.</p>
     <p><b>功能提示&emsp;</b>求底数在模意义下的指数幂.</p>
-    <p>【底数】<input id="0"/>【指数】<input id="1"/>【模数】<input id="2"/><span></span><button id="calc">✓</button></p>
+    <p>【底数】<input id="0"/>【指数】<input id="1"/>【模数】<input id="2"/></p>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
 
