@@ -31,18 +31,19 @@ function __exgcd(m, n) {
 // Return: [x, y], x is the minimum natural solution (-1 if no solutions)
 function exgcd(m, n, c) {
     let[x, y, g] = __exgcd(abs(m), abs(n));
-    if(c % g != 0) return [-1, 0];
+    if(c % g != 0n) return [-1, 0];
     if(m < 0n) x = -x;
     if(n < 0n) y = -y;
     x *= c / g;
     y *= c / g;
-    const k = x / (n / g) + (x < 0n ? 1n : 0n);
-    return [x + k * (n / g), y - k * (m / g)];
+    // const k = (-x) / (n / g);// + (x < 0n ? 1n : 0n);
+    x = (x % (n / g) + (n / g)) % (n / g);
+    return [x, (c - x * m) / n];
 }
 // Precondition: m, n are integers
 function inv(m, n) { return exgcd(m, n, 1n)[0]; }
 // random integer in [0, 2^16)
-var rand16 = function(){
+var rand16 = function() {
     var r = 1n;
     return function() {
         r *= 1103515245n;

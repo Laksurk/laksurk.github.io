@@ -13,10 +13,12 @@ function create_tool(toolname, func){
     tool.find("input").on("input", function(){
         $(this).val($(this).val().replace(/[^\d]/g, ''));
         let input = [];
+        let flag = true;
         tool.find("input").each(function(){
             input.push($(this).val());
+            if(!$(this).hasClass("optional") && $(this).val() == "") flag = false;
         });
-        tool.find("span#result").html(input.indexOf("") == -1 ? func(input): "");
+        tool.find("span#result").html(flag ? func(input) : "");
     });
 }
 $(function(){
@@ -29,18 +31,34 @@ $(function(){
         const x = BigInt(text);
         if(x <= 1n || x >= (1n << 64n)) return "输入不合法";
         const l = Factorize(x);
-        return l.length == 1 ? x + " 是素数" : x + " = " + l.join(" * ");
+        return l.length == 1 ? x + " 是素数" : x + " = " + l.join(" × ");
+    });
+    create_tool("gcd", function(text){
+        const[x, y] = text.map(BigInt);
+        if(x == 0n && y == 0n) return "输入不合法";
+        const g = __gcd(x, y);
+        return "gcd(" + x + ", " + y + ") = " + "<b>" + g + "</b>";
     });
     create_tool("qpow", function(text){
         const[x, y, z] = text.map(BigInt);
         if(z <= 1n) return "输入不合法";
-        return x + "<sup>" + y + "</sup> mod " + z + " = " + qpow(x, y, z);
+        return x + "<sup>" + y + "</sup> mod " + z + " = <b>" + qpow(x, y, z) + "</b>";
     });
     create_tool("inv", function(text){
         const[x, y] = text.map(BigInt);
         if(y <= 1n) return "输入不合法";
         const i = inv(x, y);
-        return i === -1 ? "输入不合法" : x + "<sup>-1</sup> mod " + y + " = " + i;
+        return i === -1 ? "输入不合法" : x + "<sup>-1</sup> mod " + y + " = <b>" + i + "</b>";
+    });
+    create_tool("exgcd", function(text){
+        let[a, b, c] = text.map(BigInt);
+        if(a == 0n || b == 0n) return "输入不合法";
+        if(text[2] == "") c = __gcd(a, b);
+        const[x, y] = exgcd(a, b, c);
+        console.log(x);
+        const sa = "<b>" + x + "</b> × " + a + " ";
+        const sb = "<b>" + abs(y) + "</b> × " + b + " = " + c;
+        return x === -1 ? "方程无整数解" : sa + (y >= 0n ? "+ " : "<b>- </b>") + sb;
     });
 });
 
@@ -101,6 +119,14 @@ hr {
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
 <hr/>
+<h1>最大公约数</h1>
+<div class="tool" id="gcd">
+    <p><b>输入要求&emsp;</b>均为自然数，且不都为 0.</p>
+    <p><b>功能提示&emsp;</b>求两自然数的最大公约数.</p>
+    <p><input id="0"/>,&ensp;<input id="1"/></p>
+    <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
+</div>
+<hr/>
 <h1>模意义自然数幂</h1>
 <div class="tool" id="qpow">
     <p><b>输入要求&emsp;</b>均为自然数，且模数大于 1.</p>
@@ -116,7 +142,14 @@ hr {
     <p>【底数】<input id="0"/>【模数】<input id="1"/></p>
     <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
 </div>
-
+<hr/>
+<h1>线性不定方程求解</h1>
+<div class="tool" id="exgcd">
+    <p><b>输入要求&emsp;</b>均为正整数. c 留空则取 c=gcd(a, b).</p>
+    <p><b>功能提示&emsp;</b>求不定方程 ax+by=c 的一组特解. 保证 x 为最小自然数解.</p>
+    <p>a=<input id="0"/>, b=<input id="1"/>, c=<input id="2" class="optional"/></p>
+    <p><b>计算结果&emsp;</b><u><span id="result"></span></u></p>
+</div>
 
 </div>
 </body>
