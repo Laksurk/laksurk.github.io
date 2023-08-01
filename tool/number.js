@@ -103,7 +103,7 @@ function PollardRho(n) {
                 cnt = -1;
             }
             prod = x;
-        };
+        }
     }
 }
 // Precondition: n is a natural number, 2 <= n <= 2^64
@@ -116,5 +116,5 @@ function Factorize(n) {
         l.push(d);
         l.push(n / d);
     }
-    return ans.sort(function(x, y){ return x > y; });
+    return ans.sort(function(x, y){ return x == y ? 0 : x > y ? -1 : +1 });
 }
