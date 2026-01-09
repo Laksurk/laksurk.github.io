@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Amazons</title>
+  <style>
+    :root{--size:60px;--light:#f0d9b5;--dark:#b58863;--highlight:#ffe066}
+    body{font-family:system-ui,Segoe UI,Arial;display:flex;flex-direction:column;align-items:center;padding:18px}
+    h1{margin:6px 0 12px}
+    #controls{margin-bottom:8px;display:flex;gap:10px;align-items:center}
+    button{padding:6px 10px;font-size:14px}
+    #status{font-weight:600}
+    .board{display:grid;grid-template-columns:repeat(8, var(--size));grid-template-rows:repeat(8,var(--size));border:4px solid #444;position:relative}
+    .cell{width:var(--size);height:var(--size);display:flex;align-items:center;justify-content:center;font-size:28px;cursor:pointer;user-select:none;position:relative}
+    .piece{width:36px;height:36px;border-radius:50%;display:inline-block;box-sizing:border-box}
+    .piece.white{background:#fff;border:2px solid #ddd}
+    .piece.black{background:#222;border:2px solid #111}
+    .cell.light{background:var(--light)}
+    .cell.dark{background:var(--dark)}
+    .cell.available{box-sizing:border-box}
+    .cell.available::after{content:'';position:absolute;inset:0;background:rgba(0,0,0,0.12);pointer-events:none;border-radius:0}
+    .cell.arrow{color:#444}
+    .cell.blocked{color:inherit}
+    .cell.blocked::after{content:'×';position:absolute; font-size:44px;line-height:1;left:50%;top:50%;transform:translate(-50%,-50%);background:none;pointer-events:none;border:0;padding:0;margin:0}
+    /* make × contrast with the underlying checker color and slightly larger */
+    .cell.light.blocked::after{color:#444;font-size:50px}
+    .cell.dark.blocked::after{color:#444;font-size:50px;text-shadow:0 1px 0 rgba(0,0,0,0.15)}
+    .moving-piece{position:absolute;z-index:60;pointer-events:none}
+    /* overlay modal when game over */
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:80;visibility:hidden;opacity:0;transition:opacity 200ms}
+    .overlay.show{visibility:visible;opacity:1}
+    .modal{background:#fff;padding:18px 22px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.25);min-width:260px;text-align:center}
+    .modal h2{margin:0 0 8px;font-size:18px}
+    .modal button{margin-top:8px}
+    .legend{margin-top:12px;font-size:14px}
+  </style>
+  <script src="../src/jquery.min.js"></script>
+</head>
+<body>
+  <h1>Amazons</h1>
+  <div id="controls">
+    <div id="status">当前回合：白方 ♕</div>
+    <label>模式: <select id="mode"><option value="pve_first">单人（玩家先手）</option><option value="pve_second">单人（玩家后手）</option><option value="pvp">双人</option><option value="ai_vs_ai">电脑对局</option></select></label>
+    <button id="reset">重新开局</button>
+  </div>
+  <div id="board" class="board" role="application" aria-label="Amazon 棋盘"></div>
+  <div class="legend">提示：先点击你的棋子，点击目标位置移动，然后点击放置障碍的位置。</div>
+
+  <div id="overlay" class="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h2 id="overlay-title">游戏结束</h2>
+      <div id="overlay-msg">胜者：黑方</div>
+      <div style="margin-top:10px"><button id="overlay-reset">重新开始</button></div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    const SIZE = 8;
+    const EMPTY = 0, WHITE = 1, BLACK = 2, ARROW = 3;
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const resetBtn = document.getElementById('reset');
+
+    let board = new Array(SIZE*SIZE).fill(EMPTY);
+    let currentPlayer = WHITE; // WHITE starts
+    let selected = null; // selected amazon index during move
+    let phase = 'select'; // 'select' | 'arrow'
+    let aiEnabled = false;
+    let aiColor = BLACK; // which color AI plays when aiEnabled
+    let aiDelay = 600; // ms delay before AI moves
+    let gameOver = false;
+    let isAnimating = false;
+
+    function idx(r,c){return r*SIZE+c}
+    function rc(i){return [Math.floor(i/SIZE), i%SIZE]}
+
+    function setupInitial(){
+      board.fill(EMPTY);
+      // Place 4 white amazons at positions specified by user (0-based): (0,2),(2,0),(0,5),(2,7)
+      const whites = [[0,2],[2,0],[0,5],[2,7]];
+      // horizontal symmetry (flip rows) for black pieces
+      const blacks = whites.map(([r,c]) => [7 - r, c]);
+      for(const [r,c] of whites) board[idx(r,c)] = WHITE;
+      for(const [r,c] of blacks) board[idx(r,c)] = BLACK;
+      currentPlayer = WHITE; selected = null; phase='select'; gameOver=false; isAnimating=false;
+      render();
+      // if AI plays first, trigger
+      checkGameOverAndMaybeTriggerAI();
+    }
+
+    function render(){
+      boardEl.innerHTML = '';
+      for(let r=0;r<SIZE;r++){
+        for(let c=0;c<SIZE;c++){
+          const i = idx(r,c);
+          const cell = document.createElement('div');
+          cell.className = 'cell '+(((r+c)%2===0)?'light':'dark');
+          cell.dataset.index = i;
+          if(board[i]===WHITE){
+            const p = document.createElement('span'); p.className = 'piece white'; cell.appendChild(p);
+          } else if(board[i]===BLACK){
+            const p = document.createElement('span'); p.className = 'piece black'; cell.appendChild(p);
+          } else if(board[i]===ARROW){
+            // keep blocked background but remove dot
+            cell.classList.add('blocked');
+          }
+          boardEl.appendChild(cell);
+        }
+      }
+      updateStatus();
+    }
+
+    function showOverlay(title,msg){
+      const ov = document.getElementById('overlay');
+      document.getElementById('overlay-title').textContent = title;
+      document.getElementById('overlay-msg').textContent = msg;
+      ov.classList.add('show'); ov.setAttribute('aria-hidden','false');
+      // visually disable board
+      boardEl.style.filter = 'brightness(0.75)';
+      boardEl.style.pointerEvents = 'none';
+    }
+
+    function hideOverlay(){
+      const ov = document.getElementById('overlay');
+      ov.classList.remove('show'); ov.setAttribute('aria-hidden','true');
+      boardEl.style.filter = ''; boardEl.style.pointerEvents = '';
+    }
+
+    let aiBoth = false; // when true both sides are AI
+    function setModeFromUI(){
+      const mode = document.getElementById('mode').value;
+      aiBoth = false;
+      if(mode === 'pvp') { aiEnabled = false; aiColor = null; }
+      else if(mode === 'pve_first') { aiEnabled = true; aiBoth = false; aiColor = BLACK; }
+      else if(mode === 'pve_second') { aiEnabled = true; aiBoth = false; aiColor = WHITE; }
+      else if(mode === 'ai_vs_ai') { aiEnabled = true; aiBoth = true; aiColor = null; }
+    }
+
+    function updateStatus(){
+      statusEl.textContent = '当前回合：' + (currentPlayer===WHITE? '白方 ♕' : '黑方 ♛');
+    }
+
+    const DIRS = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+
+    function slidesFrom(i, boardState){
+      const [r,c] = rc(i);
+      const moves = [];
+      for(const [dr,dc] of DIRS){
+        let nr=r+dr, nc=c+dc;
+        while(nr>=0 && nr<SIZE && nc>=0 && nc<SIZE){
+          const ni = idx(nr,nc);
+          if(boardState[ni] !== EMPTY) break;
+          moves.push(ni);
+          nr += dr; nc += dc;
+        }
+      }
+      return moves;
+    }
+
+    function highlight(list){
+      // clear first
+      document.querySelectorAll('.cell').forEach(el=>el.classList.remove('available'));
+      for(const i of list){
+        const el = boardEl.querySelector(`[data-index='${i}']`);
+        if(el) el.classList.add('available');
+      }
+    }
+
+    function clearHighlights(){
+      document.querySelectorAll('.cell').forEach(el=>el.classList.remove('available'));
+    }
+
+    function handleCellClick(i){
+      if(gameOver) return;
+      if(aiEnabled && currentPlayer === aiColor) return; // block human input on AI's turn
+      if(isAnimating) return;
+      if(phase === 'select'){
+        if(board[i] === currentPlayer){
+          // clicking the same selected piece cancels selection
+          if(selected === i){
+            selected = null; clearHighlights();
+          } else {
+            selected = i;
+            const moves = slidesFrom(i, board);
+            highlight(moves);
+          }
+        } else {
+          // if clicked an already highlighted move (move target), perform move (animated)
+          const el = boardEl.querySelector(`[data-index='${i}']`);
+          if(el && el.classList.contains('available') && selected !== null){
+            // animated move: from `selected` to `i`
+            if(isAnimating) return;
+            isAnimating = true;
+            animateMove(selected, i, currentPlayer, ()=>{
+              // after move completes, occupy destination and enter arrow phase
+              board[i] = currentPlayer;
+              board[selected] = EMPTY;
+              selected = i; // new position before arrow
+              phase = 'arrow';
+              // compute arrow moves from new pos (treating board as is: amazon occupies new pos)
+              const arrows = slidesFrom(selected, board);
+              highlight(arrows);
+              renderCellsOnly();
+              isAnimating = false;
+            });
+          } else {
+            // clicked elsewhere -> cancel selection
+            selected = null; clearHighlights();
+          }
+        }
+      } else if(phase === 'arrow'){
+        const el = boardEl.querySelector(`[data-index='${i}']`);
+        if(el && el.classList.contains('available')){
+          // place arrow
+          board[i] = ARROW;
+          selected = null; phase = 'select';
+          clearHighlights();
+          currentPlayer = (currentPlayer === WHITE)? BLACK : WHITE;
+          render();
+          // after switching player, check game over or let AI move
+          checkGameOverAndMaybeTriggerAI();
+        } else if (i === selected) {
+          // clicked the amazon's current square -> ignore and remain in arrow phase
+        } else {
+          // clicked an illegal square while in arrow phase -> do nothing
+          // preserve moved amazon, keep phase='arrow' and highlights
+        }
+      }
+      // avoid re-rendering the board while a piece animation is active
+      if(!isAnimating) renderCellsOnly();
+    }
+
+    function checkGameOverAndMaybeTriggerAI(){
+      if(gameOver) return;
+      const moves = getAllLegalMoves(currentPlayer, board);
+      if(moves.length === 0){
+        gameOver = true;
+        const winner = (currentPlayer===WHITE? '黑方' : '白方');
+        statusEl.textContent = '游戏结束：' + winner + ' 胜';
+        showOverlay('游戏结束', '胜者：' + winner);
+        return;
+      }
+      if(!aiEnabled) return;
+      if(aiBoth){
+        // both sides AI: trigger AI for current player
+        setTimeout(()=> aiMoveFor(currentPlayer), aiDelay);
+      } else if(currentPlayer === aiColor){
+        setTimeout(()=> aiMoveFor(aiColor), aiDelay);
+      }
+    }
+
+    function renderCellsOnly(){
+      // update each cell content and classes without rebuilding whole DOM (to preserve highlights)
+      for(let i=0;i<SIZE*SIZE;i++){
+        const el = boardEl.querySelector(`[data-index='${i}']`);
+        if(!el) continue;
+        el.classList.remove('blocked');
+        el.innerHTML = '';
+        if(board[i]===WHITE){ const p = document.createElement('span'); p.className='piece white'; el.appendChild(p); }
+        else if(board[i]===BLACK){ const p = document.createElement('span'); p.className='piece black'; el.appendChild(p); }
+        else if(board[i]===ARROW){ el.classList.add('blocked'); }
+        else { /* empty */ }
+      }
+      updateStatus();
+    }
+
+    boardEl.addEventListener('click', (ev)=>{
+      const cell = ev.target.closest('.cell');
+      if(!cell) return;
+      const i = Number(cell.dataset.index);
+      handleCellClick(i);
+    });
+
+    resetBtn.addEventListener('click', ()=>{ hideOverlay(); setupInitial(); });
+    document.getElementById('mode').addEventListener('change', ()=>{ setModeFromUI(); });
+    document.getElementById('overlay-reset').addEventListener('click', ()=>{ hideOverlay(); setupInitial(); });
+
+    // AI helpers
+    function cloneBoard(b){ return b.slice(); }
+
+    function getAmazons(color, b){
+      const res = [];
+      for(let i=0;i<b.length;i++) if(b[i]===color) res.push(i);
+      return res;
+    }
+
+    function getAllLegalMoves(color, b){
+      const res = [];
+      const amazons = getAmazons(color, b);
+      for(const from of amazons){
+        const slides = slidesFrom(from, b);
+        for(const to of slides){
+          // simulate moving amazon to 'to'
+          const tmp = cloneBoard(b);
+          tmp[from] = EMPTY; tmp[to] = color;
+          const arrows = slidesFrom(to, tmp);
+          for(const arrow of arrows){
+            res.push({from,to,arrow});
+          }
+        }
+      }
+      return res;
+    }
+
+    function evaluateBoardFor(color, b){
+      // simple mobility heuristic: number of available slides for color minus opponent
+      const my = getAmazons(color,b).reduce((acc,a)=>acc+slidesFrom(a,b).length,0);
+      const opp = getAmazons(color===WHITE?BLACK:WHITE,b).reduce((acc,a)=>acc+slidesFrom(a,b).length,0);
+      return my - opp;
+    }
+
+    // animation helpers
+    function getCellElement(i){ return boardEl.querySelector(`[data-index='${i}']`); }
+    function animateMove(from,to,color,cb){
+      const $src = $($(getCellElement(from)));
+      const $dst = $($(getCellElement(to)));
+      if($src.length === 0 || $dst.length === 0){ cb && cb(); return; }
+      const srcPiece = $src.find('.piece');
+      // compute start/end coordinates in page space
+      // use jQuery offsets (document coordinates) to account for scrolling/viewport
+      const srcOffset = srcPiece.length ? srcPiece.offset() : $src.offset();
+      const dstPiece = $dst.find('.piece');
+      const dstCellOffset = $dst.offset();
+      const pieceW = srcPiece.length ? srcPiece.outerWidth() : ($src.find('.piece').outerWidth() || $src.outerWidth());
+      const pieceH = srcPiece.length ? srcPiece.outerHeight() : ($src.find('.piece').outerHeight() || $src.outerHeight());
+      const $moving = $('<span>').addClass('piece ' + (color===WHITE? 'white':'black') + ' moving-piece');
+      // set explicit size and absolute page-positioning (use document coordinates)
+      $moving.css({position:'absolute', left: srcOffset.left + 'px', top: srcOffset.top + 'px', width: pieceW + 'px', height: pieceH + 'px', 'z-index': 9999});
+      // append to body so page coords match
+      $(document.body).append($moving);
+      // hide original piece visually (keep in DOM to avoid layout change)
+      if(srcPiece.length) srcPiece.css('visibility','hidden');
+      else $src.find('.piece').css('visibility','hidden');
+      // determine destination coordinates: prefer inner piece offset, otherwise center in cell
+      let dstLeft, dstTop;
+      if(dstPiece.length){
+        const dstPieceOffset = dstPiece.offset();
+        dstLeft = dstPieceOffset.left;
+        dstTop = dstPieceOffset.top;
+      } else {
+        dstLeft = dstCellOffset.left + ( $dst.outerWidth() - pieceW )/2;
+        dstTop = dstCellOffset.top + ( $dst.outerHeight() - pieceH )/2;
+      }
+      // animate using jQuery built-in .animate on page coords
+      const duration = 300; // doubled duration for smoother, slower animation
+      $moving.animate({left: dstLeft + 'px', top: dstTop + 'px'}, duration, 'swing', function(){
+        // cleanup
+        $moving.remove();
+        if(srcPiece.length) srcPiece.css('visibility','');
+        // call callback (caller will update board state and re-render)
+        cb && cb();
+      });
+      // safety fallback
+      setTimeout(()=>{ if($.contains(document, $moving[0])){ $moving.remove(); if(srcPiece.length) srcPiece.css('visibility',''); cb && cb(); } }, duration + 600);
+    }
+
+    function aiMoveFor(color){
+      if(gameOver) return;
+      const moves = getAllLegalMoves(color, board);
+      if(moves.length===0){ checkGameOverAndMaybeTriggerAI(); return; }
+      // evaluate moves, pick best
+      let bestScore = -Infinity; let bestMoves = [];
+      for(const mv of moves){
+        const tmp = cloneBoard(board);
+        tmp[mv.from] = EMPTY; tmp[mv.to] = color; tmp[mv.arrow] = ARROW;
+        const score = evaluateBoardFor(color, tmp);
+        if(score > bestScore){ bestScore = score; bestMoves = [mv]; }
+        else if(score === bestScore) bestMoves.push(mv);
+      }
+      const choice = bestMoves[Math.floor(Math.random()*bestMoves.length)];
+      // apply choice to real board with animation
+      if(isAnimating) return;
+      isAnimating = true;
+      animateMove(choice.from, choice.to, color, ()=>{
+        // after piece moved
+        board[choice.to] = color;
+        board[choice.from] = EMPTY;
+        board[choice.arrow] = ARROW;
+        currentPlayer = (color===WHITE)? BLACK : WHITE;
+        isAnimating = false;
+        render();
+        checkGameOverAndMaybeTriggerAI();
+      });
+    }
+
+    // legacy single-color wrapper (keeps compatibility)
+    function aiMove(){ if(aiColor) aiMoveFor(aiColor); }
+
+    // init
+    setModeFromUI();
+    setupInitial();
+  })();
+  </script>
+</body>
+</html>
