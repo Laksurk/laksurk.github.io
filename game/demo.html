@@ -2,20 +2,19 @@
 <html>
 <head>
 	<meta charset="utf-8">
-	<title>配对 Demo（6 位 key）</title>
+	<title>Ably 配对 Demo（6 位 key）</title>
 	<meta name="viewport" content="width=device-width,initial-scale=1">
 	<style>
 		body{font-family:Arial,Helvetica,sans-serif;padding:16px}
 		input,button{margin:6px;padding:6px}
 		#events{height:220px;overflow:auto;background:#f6f6f6;border:1px solid #ddd;padding:8px}
 	</style>
-	<!-- Firebase compat SDK（用于快速演示） -->
-	<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
-	<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+	<!-- Ably 客户端 -->
+	<script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 </head>
 <body>
-	<h1>GitHub Pages + Firebase 最小配对 Demo</h1>
-	<p>成本最低的配对方式：使用 Firebase Realtime Database（免费额度足够测试）。</p>
+	<h1>Ably 最小配对 Demo（6 位 key）</h1>
+	<p>替代 Firebase：使用 Ably Realtime 的 presence + publish/subscribe（成本低，快速接入）。</p>
 
 	<div>
 		<label>6位房间 Key：<input id="keyInput" maxlength="6" placeholder="例如 ABC123"></label>
@@ -31,20 +30,9 @@
 	</div>
 
 	<script>
-	// --- 请替换为你自己的 Firebase 配置（在 Firebase 控制台获得） ---
-	const firebaseConfig = {
-		apiKey: "YOUR_API_KEY",
-		authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-		databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-		projectId: "YOUR_PROJECT_ID",
-		storageBucket: "YOUR_PROJECT_ID.appspot.com",
-		messagingSenderId: "...",
-		appId: "..."
-	};
-	// -------------------------------------------------------------
-
-	firebase.initializeApp(firebaseConfig);
-	const db = firebase.database();
+	// --- 请替换为你的 Ably API Key（测试阶段可直接放前端） ---
+	const ABLY_API_KEY = 'rDsQmg.uUBjAg:p_l0CknGiH99DMQvioK4Ch2nZrKf9JUG2Kn6g8Sbou4';
+	// -------------------------------------------------------
 
 	const keyInput = document.getElementById('keyInput');
 	const joinBtn = document.getElementById('joinBtn');
@@ -55,7 +43,7 @@
 
 	const clientId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2,9);
 	let roomKey = null;
-	let playersRef, eventsRef, playersListener, eventsListener;
+	let ably, channel;
 
 	function appendEvent(text){
 		const d = document.createElement('div'); d.textContent = text; eventsEl.appendChild(d); eventsEl.scrollTop = eventsEl.scrollHeight;
@@ -68,57 +56,69 @@
 		joinBtn.disabled = true; keyInput.disabled = true;
 		statusEl.textContent = '状态：尝试加入 ' + roomKey;
 
-		playersRef = db.ref('rooms/' + roomKey + '/players');
-		eventsRef = db.ref('rooms/' + roomKey + '/events');
+		// 初始化 Ably
+		try{
+			ably = new Ably.Realtime(ABLY_API_KEY);
+		}catch(e){
+			alert('初始化 Ably 失败，请检查 API Key');
+			console.error(e); return;
+		}
 
-		// 注册 presence：加入时写入自己的 id，断线时删除
-		const myRef = db.ref('rooms/' + roomKey + '/players/' + clientId);
-		await myRef.set({id: clientId, ts: Date.now()});
-		myRef.onDisconnect().remove();
+		channel = ably.channels.get('room:' + roomKey);
 
-		// 监听玩家列表
-		playersListener = playersRef.on('value', snapshot => {
-			const obj = snapshot.val() || {};
-			const ids = Object.keys(obj);
-			statusEl.textContent = '状态：房间 ' + roomKey + '，玩家数 ' + ids.length;
-			if(ids.length === 2){
-				appendEvent('匹配完成：两台电脑已准备。开始游戏。');
-				sendBtn.disabled = false;
-			} else if(ids.length > 2){
-				appendEvent('房间人数已超过 2（当前 ' + ids.length + '），第三人只作为旁观者');
-				sendBtn.disabled = false;
-			} else {
-				appendEvent('等待另一名玩家加入...');
-				sendBtn.disabled = true;
-			}
+		// Presence: 进入
+		channel.presence.enter({clientId: clientId, ts: Date.now()});
+
+		// 订阅 presence 变化
+		channel.presence.subscribe('enter', (m)=>{
+			appendEvent('玩家加入: ' + (m.data && m.data.clientId));
+			updatePlayersCount();
+		});
+		channel.presence.subscribe('leave', (m)=>{
+			appendEvent('玩家离开: ' + (m.data && m.data.clientId));
+			updatePlayersCount();
 		});
 
-		// 监听事件（其他客户端 push 的游戏事件）
-		eventsListener = eventsRef.limitToLast(50).on('child_added', snap => {
-			const v = snap.val();
-			appendEvent((v.from===clientId? '我: ' : (v.from||'对手')+': ') + v.msg + ' (' + new Date(v.ts).toLocaleTimeString() + ')');
+		// 订阅游戏事件
+		channel.subscribe('gameEvent', msg => {
+			const d = msg.data || {};
+			appendEvent((d.from===clientId? '我: ' : (d.from||'对手')+': ') + d.msg + ' (' + new Date(d.ts).toLocaleTimeString() + ')');
 		});
 
+		// 获取当前 presence 列表并更新状态
+		updatePlayersCount();
 		appendEvent('已加入房间 ' + roomKey + '，你的 id: ' + clientId);
 		statusEl.textContent = '状态：已加入 ' + roomKey + '，等待匹配';
 	};
 
-	sendBtn.onclick = async ()=>{
+	function updatePlayersCount(){
+		channel.presence.get((err, members) => {
+			if(err){ console.warn('presence.get err', err); return; }
+			const n = members.length;
+			statusEl.textContent = '状态：房间 ' + roomKey + '，玩家数 ' + n;
+			if(n >= 2){
+				appendEvent('匹配完成：两台电脑已准备。开始游戏。');
+				sendBtn.disabled = false;
+			} else {
+				sendBtn.disabled = true;
+			}
+		});
+	}
+
+	sendBtn.onclick = ()=>{
 		const text = (msgInput.value||'').trim(); if(!text) return;
 		const e = {from: clientId, msg: text, ts: Date.now()};
-		await eventsRef.push(e);
+		channel.publish('gameEvent', e);
 		msgInput.value = '';
 	};
 
-	// 离开页面时清理
+	// 离开页面时退出 presence
 	window.addEventListener('beforeunload', ()=>{
-		if(roomKey){
-			try{ db.ref('rooms/' + roomKey + '/players/' + clientId).remove(); }catch(e){}
-		}
+		try{ if(channel) channel.presence.leave(); }catch(e){}
 	});
 	</script>
 
-	<p style="margin-top:18px;color:#666">使用说明：在 Firebase 控制台创建项目并启用 Realtime Database，复制你的 firebaseConfig 到上面代码位置。数据库测试阶段可以设为公开读写（生产请设置规则和认证）。</p>
+	<p style="margin-top:18px;color:#666">使用说明：在 Ably 控制台创建免费账号并生成 API Key（Dashboard → API keys），把 key 填到上面的 `ABLY_API_KEY`。生产请使用 token auth。</p>
 </body>
 </html>
 
