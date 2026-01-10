@@ -46,6 +46,7 @@
     }
   </style>
   <script src="../src/jquery.min.js"></script>
+  <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 </head>
 <body>
   <h1>Amazons</h1>
@@ -53,7 +54,6 @@
     <div id="status">当前回合：白方 ♕</div>
     <label>模式: <select id="mode"><option value="pve_first">单人（玩家先手）</option><option value="pve_second">单人（玩家后手）</option><option value="pvp">双人</option><option value="ai_vs_ai">电脑对局</option></select></label>
     <label>AI难度: <select id="level"><option value="easy">简单</option><option value="medium" selected>中等</option><option value="hard">困难</option></select></label>
-    <button id="reset">重新开局</button>
   </div>
   <div id="board" class="board" role="application" aria-label="Amazon 棋盘"></div>
   <div class="legend">提示：先点击你的棋子，点击目标位置移动，然后点击放置障碍的位置。</div>
@@ -72,7 +72,8 @@
     const EMPTY = 0, WHITE = 1, BLACK = 2, ARROW = 3;
     const boardEl = document.getElementById('board');
     const statusEl = document.getElementById('status');
-    const resetBtn = document.getElementById('reset');
+    // hide current-turn until a match is started
+    statusEl.style.display = 'none';
 
     let board = new Array(SIZE*SIZE).fill(EMPTY);
     let currentPlayer = WHITE; // WHITE starts
@@ -89,6 +90,20 @@
     let aiTimer = null; // 待触发的AI计时器
     let animTimer = null; // 动画兜底计时器
     let searchWorker = null; // Web Worker for AI search
+    // --- Online play state ---
+    let onlineEnabled = false; // whether online mode is active for this session
+    let onlineRoom = null;
+    let onlineAbly = null;
+    let onlineChannel = null;
+    let onlineClientId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2,9);
+    let onlinePeers = new Map(); // discovered peers
+    let onlineHeartbeat = null;
+    let onlineLocalColor = null; // WHITE or BLACK
+    let onlineStarted = false; // whether an online match has been started in this room
+    let pendingMoveFrom = null; // used to store origin during animated move
+    let pendingMoveTo = null;
+    let gameStarted = false; // whether current match is active (started by Start or online start)
+    let isMyTurn = false; // for online: whether it's currently this client's turn
 
     function idx(r,c){return r*SIZE+c}
     function rc(i){return [Math.floor(i/SIZE), i%SIZE]}
@@ -104,6 +119,9 @@
       for(const [r,c] of whites) board[idx(r,c)] = WHITE;
       for(const [r,c] of blacks) board[idx(r,c)] = BLACK;
       currentPlayer = WHITE; selected = null; phase='select'; gameOver=false; isAnimating=false;
+      // Start disabled until user clicks '开始' (or online start). Prevent local moves before start.
+      gameStarted = false;
+      isMyTurn = false;
       render();
       // if AI plays first, trigger
       checkGameOverAndMaybeTriggerAI();
@@ -165,7 +183,12 @@
     }
 
     function updateStatus(){
-      statusEl.textContent = '当前回合：' + (currentPlayer===WHITE? '白方 ♕' : '黑方 ♛');
+      if(gameStarted){
+        statusEl.style.display = 'inline-block';
+        statusEl.textContent = '当前回合：' + (currentPlayer===WHITE? '白方 ♕' : '黑方 ♛');
+      } else {
+        statusEl.style.display = 'none';
+      }
     }
 
     const DIRS = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
@@ -200,8 +223,21 @@
 
     function handleCellClick(i){
       if(gameOver) return;
+      // block input unless gameStarted and (offline or it's our turn online)
+      if(!gameStarted) return;
+      if(onlineEnabled){ if(!isMyTurn) return; }
       if(aiEnabled && currentPlayer === aiColor) return; // block human input on AI's turn
       if(isAnimating) return;
+      // In online player mode, only allow interacting with our own pieces (but still allow clicking available targets)
+      if(onlineEnabled && onlineLocalColor){
+        const cellEl = boardEl.querySelector(`[data-index='${i}']`);
+        const isAvailable = cellEl && cellEl.classList.contains('available');
+        if(phase === 'select'){
+          // selecting a piece: only allow if it's our color or it's an available move target
+          if(board[i] !== onlineLocalColor && !isAvailable) return;
+        }
+        // in arrow phase, keep existing logic (available checks below)
+      }
       if(phase === 'select'){
         if(board[i] === currentPlayer){
           // clicking the same selected piece cancels selection
@@ -223,8 +259,12 @@
             animateMove(selected, i, currentPlayer, ()=>{
               if(myRun!==runId){ isAnimating=false; return; }
               // after move completes, occupy destination and enter arrow phase
+              const fromIndex = selected; // record origin
               board[i] = currentPlayer;
-              board[selected] = EMPTY;
+              board[fromIndex] = EMPTY;
+              // store pending move so we can send it when player places arrow
+              pendingMoveFrom = fromIndex;
+              pendingMoveTo = i;
               selected = i; // new position before arrow
               phase = 'arrow';
               // compute arrow moves from new pos (treating board as is: amazon occupies new pos)
@@ -247,6 +287,15 @@
           clearHighlights();
           currentPlayer = (currentPlayer === WHITE)? BLACK : WHITE;
           render();
+          // 如果在线游戏中，发送刚刚完成的移动（from,to,arrow）
+          if(onlineEnabled && onlineChannel && pendingMoveFrom !== null && pendingMoveTo !== null){
+            const mv = {from: pendingMoveFrom, to: pendingMoveTo, arrow: i, fromClient: onlineClientId, ts: Date.now()};
+            try{
+              onlineChannel.publish('move', mv, (err)=>{ if(err) console.error('move publish err', err); else console.log('move published', mv); });
+            }catch(e){ console.error('publish move exception', e); }
+            // clear pending
+            pendingMoveFrom = pendingMoveTo = null;
+          }
           // after switching player, check game over or let AI move
           checkGameOverAndMaybeTriggerAI();
         } else if (i === selected) {
@@ -262,12 +311,29 @@
 
     function checkGameOverAndMaybeTriggerAI(){
       if(gameOver) return;
+      // don't run AI logic before a match is started by the player
+      if(!gameStarted) return;
       const moves = getAllLegalMoves(currentPlayer, board);
       if(moves.length === 0){
         gameOver = true;
-        const winner = (currentPlayer===WHITE? '黑方' : '白方');
-        statusEl.textContent = '游戏结束：' + winner + ' 胜';
-        showOverlay('游戏结束', '胜者：' + winner);
+        const winnerColor = (currentPlayer===WHITE? BLACK : WHITE); // opponent wins
+        // update status
+        statusEl.textContent = '游戏结束：' + (winnerColor===WHITE? '白方' : '黑方') + ' 胜';
+        // decide message based on mode (online/offline and AI)
+        if(onlineEnabled){
+          if(onlineLocalColor){
+            if(winnerColor === onlineLocalColor) showOverlay('游戏结束', '你赢了！'); else showOverlay('游戏结束', '你输了……');
+          } else {
+            showOverlay('游戏结束', '胜者：' + (winnerColor===WHITE? '白方' : '黑方'));
+          }
+        } else {
+          if(aiEnabled && !aiBoth){
+            const humanColor = aiColor ? (aiColor === WHITE ? BLACK : WHITE) : WHITE;
+            if(winnerColor === humanColor) showOverlay('游戏结束', '你赢了！'); else showOverlay('游戏结束', '你输了……');
+          } else {
+            showOverlay('游戏结束', '胜者：' + (winnerColor===WHITE? '白方' : '黑方'));
+          }
+        }
         return;
       }
       if(!aiEnabled) return;
@@ -306,10 +372,137 @@
       handleCellClick(i);
     });
 
-    resetBtn.addEventListener('click', ()=>{ cancelAllAsync(); hideOverlay(); setupInitial(); });
+    // --- Controls: add Start / Resign / Online buttons and modal ---
+    const controls = document.getElementById('controls');
+    const startBtn = document.createElement('button'); startBtn.id='startBtn'; startBtn.textContent='开始';
+    const resignBtn = document.createElement('button'); resignBtn.id='resignBtn'; resignBtn.textContent='认输'; resignBtn.style.display='none';
+    const onlineBtn = document.createElement('button'); onlineBtn.id='onlineBtn'; onlineBtn.textContent='联机游戏';
+    controls.appendChild(startBtn);
+    controls.appendChild(resignBtn);
+    controls.appendChild(onlineBtn);
+    const exitOnlineBtn = document.createElement('button'); exitOnlineBtn.id='exitOnlineBtn'; exitOnlineBtn.textContent='退出房间'; exitOnlineBtn.style.display='none'; controls.appendChild(exitOnlineBtn);
+    // online info element (room and assigned role). Hidden by default
+    const onlineInfoEl = document.createElement('div'); onlineInfoEl.id='onlineInfo'; onlineInfoEl.style.marginLeft='8px'; onlineInfoEl.style.fontSize='13px'; onlineInfoEl.style.color='#444'; onlineInfoEl.style.display='none'; controls.appendChild(onlineInfoEl);
+
+    // Reset UI to initial state (shows selectors and start/online, hides resign)
+    function resetUIForInitial(){
+      try{
+        const modeSelect = document.getElementById('mode');
+        const levelSelect = document.getElementById('level');
+        modeSelect.style.display = '';
+        levelSelect.style.display = '';
+        // remove value spans if present
+        const mv = document.getElementById('modeValueSpan'); if(mv) mv.remove();
+        const lv = document.getElementById('levelValueSpan'); if(lv) lv.remove();
+        // restore labels
+        try{ modeSelect.parentElement.style.display = ''; }catch(e){}
+        levelSelect.parentElement.style.display = '';
+        startBtn.style.display = 'inline-block';
+        onlineBtn.style.display = 'inline-block';
+        resignBtn.style.display = 'none';
+        resignBtn.textContent = '认输';
+        // not an online session => mark as not started until user clicks Start
+        gameStarted = false; isMyTurn = false;
+        // reset online started flag
+        onlineStarted = false;
+        updateStatus();
+      }catch(e){ console.warn('resetUIForInitial failed', e); }
+    }
+
+    // create simple modal for entering room key
+    const onlineModal = document.createElement('div');
+    onlineModal.style.position='fixed'; onlineModal.style.left='0'; onlineModal.style.top='0'; onlineModal.style.right='0'; onlineModal.style.bottom='0';
+    onlineModal.style.display='none'; onlineModal.style.alignItems='center'; onlineModal.style.justifyContent='center';
+    onlineModal.style.background='rgba(0,0,0,0.45)';
+    onlineModal.innerHTML = `<div style="background:#fff;padding:18px 20px;border-radius:8px;min-width:280px;text-align:center"><h3>输入 6 位房间 Key</h3><input id='onlineKeyInput' maxlength='6' style='text-transform:uppercase;padding:6px;margin-top:8px;width:60%;text-align:center' placeholder='ABC123'/><div style='margin-top:12px'><button id='onlineJoinConfirm'>加入</button> <button id='onlineJoinCancel'>取消</button></div></div>`;
+    document.body.appendChild(onlineModal);
+    document.getElementById('onlineJoinCancel').addEventListener('click', ()=>{ onlineModal.style.display='none'; });
+    onlineBtn.addEventListener('click', ()=>{ document.getElementById('onlineKeyInput').value=''; onlineModal.style.display='flex'; });
+    document.getElementById('onlineJoinConfirm').addEventListener('click', ()=>{
+      const v = (document.getElementById('onlineKeyInput').value||'').trim().toUpperCase();
+      if(!/^[A-Z0-9]{6}$/.test(v)){ alert('请输入 6 位 (A-Z,0-9) 的 Key'); return; }
+      onlineModal.style.display='none';
+      startOnline(v);
+    });
+    // Enter key to confirm
+    document.getElementById('onlineKeyInput').addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ document.getElementById('onlineJoinConfirm').click(); } });
+
+    // Start / Resign handlers
+    function beginLocalGame(){
+      // configure from UI
+      setModeFromUI(); setLevelFromUI();
+      // reset board and cancel any async tasks
+      cancelAllAsync();
+      setupInitial();
+      // mark match started for local play
+      gameStarted = true; isMyTurn = true;
+      // adjust controls: replace selectors with static labels, show resign (or '结束' for AI-vs-AI)
+      try{
+        const modeSelect = document.getElementById('mode');
+        const levelSelect = document.getElementById('level');
+        const modeLabel = modeSelect.parentElement;
+        const levelLabel = levelSelect.parentElement;
+        const modeText = modeSelect.options[modeSelect.selectedIndex].text;
+        const levelText = levelSelect.options[levelSelect.selectedIndex].text;
+        // hide selects
+        modeSelect.style.display = 'none';
+        // create or update mode value span
+        let mv = document.getElementById('modeValueSpan');
+        if(!mv){ mv = document.createElement('span'); mv.id = 'modeValueSpan'; modeLabel.appendChild(document.createTextNode(' ')); modeLabel.appendChild(mv); }
+        mv.textContent = modeText;
+        // handle level: hide entirely for pvp
+        if(modeSelect.value === 'pvp'){
+          levelLabel.style.display = 'none';
+        } else {
+          levelSelect.style.display = 'none';
+          let lv = document.getElementById('levelValueSpan');
+          if(!lv){ lv = document.createElement('span'); lv.id = 'levelValueSpan'; levelLabel.appendChild(document.createTextNode(' ')); levelLabel.appendChild(lv); }
+          lv.textContent = levelText;
+          levelLabel.style.display = 'inline-block';
+        }
+        startBtn.style.display = 'none';
+        onlineBtn.style.display = 'none';
+        // if both AIs, label should be '结束' and clicking it will end the auto-match
+        if(aiBoth){ resignBtn.textContent = '结束'; } else { resignBtn.textContent = '认输'; }
+        resignBtn.style.display = 'inline-block';
+      }catch(e){ console.warn('beginLocalGame UI adjust failed', e); }
+      updateStatus();
+      // If AI should move, schedule it
+      checkGameOverAndMaybeTriggerAI();
+    }
+
+    startBtn.addEventListener('click', ()=>{ beginLocalGame(); });
+    exitOnlineBtn.addEventListener('click', ()=>{ stopOnline(); resetUIForInitial(); });
+    resignBtn.addEventListener('click', ()=>{
+      if(!gameStarted) return;
+      // If AI-vs-AI, '认输' acts as '结束' - reset immediately to initial UI without overlay
+      if(aiBoth){
+        cancelAllAsync(); setupInitial(); resetUIForInitial(); gameStarted = false; return;
+      }
+      // show overlay
+      if(onlineEnabled){ // in online, local user resigns -> they lose
+        showOverlay('游戏结束', '你输了……');
+        // notify remote that we resigned
+        try{ if(onlineChannel) onlineChannel.publish('resign', {from: onlineClientId, ts: Date.now(), loser: onlineClientId}); }catch(e){}
+        // cleanup and reset after closing overlay handled by overlay reset button
+      } else {
+        // offline: if player resigns
+        if(!aiEnabled){
+          // local two-player: show winner (opposite side)
+          const winner = (currentPlayer === WHITE) ? '黑方' : '白方';
+          showOverlay('游戏结束', winner + '胜！');
+        } else {
+          // single-player (human vs AI): player clicked resign => always treated as human loss
+          showOverlay('游戏结束', '你输了……');
+        }
+      }
+      gameStarted = false;
+    });
+
+    // reset button removed from UI; overlay '重新开始' still available
     document.getElementById('mode').addEventListener('change', ()=>{ setModeFromUI(); });
     document.getElementById('level').addEventListener('change', ()=>{ setLevelFromUI(); });
-    document.getElementById('overlay-reset').addEventListener('click', ()=>{ cancelAllAsync(); hideOverlay(); setupInitial(); });
+    document.getElementById('overlay-reset').addEventListener('click', ()=>{ cancelAllAsync(); hideOverlay(); setupInitial(); resetUIForInitial(); });
 
     // AI helpers
     function cloneBoard(b){ return b.slice(); }
@@ -609,6 +802,202 @@
       searchWorker.onerror = function(err){ try{ searchWorker.terminate(); }catch(e){} searchWorker = null; const fallback = moves[Math.floor(Math.random()*moves.length)]; performAIMove(fallback, color, myRun); };
     }
 
+    // --- Online (Ably) integration ---
+    // Replace with your Ably API key or provide token auth in production
+    const ABLY_API_KEY = 'rDsQmg.lM8j3g:QNUsaMl2R1_1lxwnTk5HqDxOdIadTyTxNf9jRUPcoxA'; // <-- PUT YOUR ABLY API KEY HERE
+
+    async function startOnline(key){
+      if(onlineEnabled) return;
+      onlineEnabled = true; onlineRoom = key;
+      // disable AI for online matches
+      aiEnabled = false; aiBoth = false;
+      try{
+        onlineAbly = new Ably.Realtime({ key: ABLY_API_KEY });
+      }catch(e){ console.error('Ably init failed', e); alert('Ably init failed'); return; }
+      onlineChannel = onlineAbly.channels.get('room:' + onlineRoom);
+
+      // subscribe for join/iam/leave/move similar to demo
+      onlineChannel.subscribe('join', msg => {
+        const d = msg.data || {};
+        const id = d.from;
+        console.log('online join from', id);
+        // reply
+        onlineChannel.publish('iam', {from: onlineClientId, ts: Date.now()});
+        if(!onlinePeers.has(id) && id!==onlineClientId) onlinePeers.set(id, Date.now());
+        updateOnlineStatus();
+        // if we now have exactly one peer (others length 1) and we were already present earlier,
+        // and we are the earlier participant (onlinePeers had been empty before this join), decide roles
+        tryAssignRolesOnSecondJoin();
+      });
+      onlineChannel.subscribe('iam', msg => {
+        const d = msg.data || {};
+        const id = d.from;
+        console.log('online iam from', id);
+        if(id!==onlineClientId) onlinePeers.set(id, Date.now());
+        updateOnlineStatus();
+        // try to assign roles if second peer is present (also handle case where we receive iam)
+        tryAssignRolesOnSecondJoin();
+      });
+      onlineChannel.subscribe('leave', msg => {
+        const d = msg.data || {};
+        const id = d.from;
+        console.log('online leave from', id);
+        onlinePeers.delete(id); updateOnlineStatus();
+      });
+      onlineChannel.subscribe('move', msg => {
+        const d = msg.data || {};
+        if(d.fromClient === onlineClientId) return; // ignore own
+        console.log('received remote move', d);
+        applyRemoteMove(d);
+      });
+      onlineChannel.subscribe('resign', msg => {
+        const d = msg.data || {};
+        const loser = d.loser || d.from;
+        console.log('received remote resign', d);
+        // if someone else resigned, we win (if we are a participant)
+        if(loser !== onlineClientId){
+          if(onlineLocalColor){
+            showOverlay('游戏结束', '你赢了！');
+          } else {
+            showOverlay('游戏结束', '胜者：对方认输');
+          }
+        }
+        gameStarted = false;
+      });
+      onlineChannel.subscribe('start', msg => {
+        const d = msg.data || {};
+        console.log('received start', d);
+        onlineStarted = true;
+        // set local colors and starter
+        if(d.white === onlineClientId) onlineLocalColor = WHITE;
+        else if(d.black === onlineClientId) onlineLocalColor = BLACK;
+        else onlineLocalColor = null; // spectator
+        // determine if we are starter
+        const starterId = d.starter;
+        // set current player to white
+        currentPlayer = WHITE;
+        gameStarted = true;
+        // show online info and current-turn display
+        if(!onlineLocalColor){
+          // spectator
+          isMyTurn = false;
+          onlineInfoEl.style.display = 'inline-block';
+          onlineInfoEl.textContent = '联机房间 ' + onlineRoom + '，观战';
+          // spectators see only exit button
+          try{ resignBtn.style.display = 'none'; exitOnlineBtn.style.display = 'inline-block'; }catch(e){}
+          statusEl.style.display = 'inline-block';
+          statusEl.textContent = '当前回合：' + (currentPlayer===WHITE? '白方 ♕' : '黑方 ♛');
+        } else {
+          // participant
+          isMyTurn = (starterId === onlineClientId);
+          onlineInfoEl.style.display = 'inline-block';
+          onlineInfoEl.textContent = '联机房间 ' + onlineRoom + '，您是' + (onlineLocalColor===WHITE? '白方':'黑方');
+          statusEl.style.display = 'inline-block';
+          statusEl.textContent = '当前回合：' + (currentPlayer===WHITE? '白方 ♕' : '黑方 ♛');
+          resignBtn.style.display = 'inline-block';
+          // hide selectors and start/online buttons
+          try{ document.getElementById('mode').parentElement.style.display = 'none'; document.getElementById('level').parentElement.style.display = 'none'; }catch(e){}
+          startBtn.style.display = 'none';
+          onlineBtn.style.display = 'none';
+          // participants do not see exit button
+          try{ exitOnlineBtn.style.display = 'none'; }catch(e){}
+        }
+      });
+
+      // hide local selectors: in online mode players don't choose mode/AI (hide whole label)
+      try{ document.getElementById('mode').parentElement.style.display = 'none'; document.getElementById('level').parentElement.style.display = 'none'; }catch(e){}
+      // announce and heartbeat (tolerant to publish errors)
+      try{ onlineChannel.publish('join', {from: onlineClientId, ts: Date.now()}); }catch(e){}
+      onlineHeartbeat = setInterval(()=>{ try{ onlineChannel.publish('join', {from: onlineClientId, ts: Date.now()}); }catch(e){}; pruneOnlinePeers(); }, 5000);
+      updateOnlineStatus();
+      // show online info in lobby and hide exit button (exit only for spectators)
+      try{ onlineInfoEl.style.display = 'inline-block'; onlineInfoEl.textContent = '联机房间 ' + onlineRoom + '，等待其他玩家加入'; }catch(e){}
+      try{ startBtn.style.display = 'none'; onlineBtn.style.display = 'none'; exitOnlineBtn.style.display = 'none'; }catch(e){}
+    }
+
+    function pruneOnlinePeers(){
+      const now = Date.now();
+      for(const [id, ts] of onlinePeers){ if(now - ts > 15000) onlinePeers.delete(id); }
+      updateOnlineStatus();
+    }
+
+    function tryAssignRolesOnSecondJoin(){
+      // Only start if we haven't already started the room
+      if(onlineStarted) return;
+      const participants = [onlineClientId].concat(Array.from(onlinePeers.keys())).filter(Boolean);
+      // only auto-start when exactly two participants present
+      if(participants.length !== 2) return;
+      // deterministically pick the smallest id to publish the start to avoid races
+      participants.sort();
+      const leader = participants[0];
+      const other = participants[1];
+      if(onlineClientId !== leader) return;
+      // leader publishes role assignment and starter
+      const assignWhiteToUs = Math.random() < 0.5;
+      const whiteId = assignWhiteToUs ? onlineClientId : other;
+      const blackId = assignWhiteToUs ? other : onlineClientId;
+      const starter = (Math.random() < 0.5) ? whiteId : blackId;
+      const msg = {white: whiteId, black: blackId, starter: starter, ts: Date.now()};
+      try{ onlineChannel.publish('start', msg); onlineStarted = true; console.log('published start', msg); }catch(e){ console.error('publish start err', e); }
+    }
+
+    // handle start message
+    // ensure we subscribe earlier in startOnline: add a handler here
+    // (we subscribe in startOnline - but ensure handler exists in file scope)
+
+    function updateOnlineStatus(){
+      const others = Array.from(onlinePeers.keys());
+      const n = others.length + 1; // include self
+      // if not started yet, show waiting/观战 state
+      if(!gameStarted){
+        if(n > 2){
+          statusEl.textContent = '联机房间 ' + (onlineRoom||'') + '，观战';
+        } else {
+          statusEl.textContent = '联机房间 ' + (onlineRoom||'') + '，等待其他玩家加入';
+        }
+      } else {
+        // match started — do not overwrite the current-turn display; keep status showing current turn
+        updateStatus();
+      }
+        // no small event log; we show online info separately
+        // nothing to do here
+    }
+
+
+    function applyRemoteMove(d){
+      // apply move sent by remote: {from,to,arrow,fromClient}
+      const from = d.from, to = d.to, arrow = d.arrow;
+      // determine opponent color
+      const opponentColor = (onlineLocalColor === WHITE) ? BLACK : WHITE;
+      // apply: clear from, set to, set arrow
+      board[from] = EMPTY;
+      board[to] = opponentColor;
+      board[arrow] = ARROW;
+      // after remote move, it's our turn
+      currentPlayer = onlineLocalColor;
+      // allow local player to move
+      gameStarted = true;
+      isMyTurn = true;
+      render();
+      checkGameOverAndMaybeTriggerAI();
+    }
+
+    function stopOnline(){
+      if(onlineHeartbeat) clearInterval(onlineHeartbeat);
+      try{ if(onlineChannel) onlineChannel.publish('leave', {from: onlineClientId, ts: Date.now()}); }catch(e){}
+      try{ if(onlineAbly) onlineAbly.close(); }catch(e){}
+      onlineEnabled = false; onlineRoom = null; onlineChannel = null; onlinePeers.clear(); onlineAbly = null;
+      statusEl.textContent = '当前回合：' + (currentPlayer===WHITE? '白方 ♕' : '黑方 ♛');
+      onlineStarted = false;
+      try{ exitOnlineBtn.style.display = 'none'; startBtn.style.display = 'inline-block'; onlineBtn.style.display = 'inline-block';
+        // hide online info and status
+        try{ onlineInfoEl.style.display = 'none'; }catch(e){}
+        try{ statusEl.style.display = 'none'; }catch(e){}
+        // restore mode/level parent labels
+        try{ document.getElementById('mode').parentElement.style.display = ''; document.getElementById('level').parentElement.style.display = ''; }catch(e){}
+      }catch(e){}
+    }
+
     function performAIMove(choice, color, myRun){
       if(myRun !== runId) return;
       if(isAnimating) return;
@@ -632,6 +1021,8 @@
     setModeFromUI();
     setLevelFromUI();
     setupInitial();
+    // restore initial UI state for local usage
+    try{ resetUIForInitial(); }catch(e){ }
 
     // 统一取消：终止AI计时、搜索与动画，避免“重新开局”竞态
     function cancelAllAsync(){
