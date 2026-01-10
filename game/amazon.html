@@ -34,6 +34,16 @@
     .modal h2{margin:0 0 8px;font-size:18px}
     .modal button{margin-top:8px}
     .legend{margin-top:12px;font-size:14px}
+    /* Responsive adjustments for small screens */
+    .board{width:calc(var(--size) * 8);height:calc(var(--size) * 8);}
+    @media (max-width: 600px){
+      :root{--size: calc((100vw - 36px) / 8);} /* fit 8 cells into viewport with some padding */
+      body{padding:10px}
+      .modal{min-width:unset;width:90%;padding:14px}
+      .legend{font-size:13px}
+      .cell{font-size:22px}
+      .piece{width:calc(var(--size) * 0.6);height:calc(var(--size) * 0.6)}
+    }
   </style>
   <script src="../src/jquery.min.js"></script>
 </head>
@@ -42,6 +52,7 @@
   <div id="controls">
     <div id="status">当前回合：白方 ♕</div>
     <label>模式: <select id="mode"><option value="pve_first">单人（玩家先手）</option><option value="pve_second">单人（玩家后手）</option><option value="pvp">双人</option><option value="ai_vs_ai">电脑对局</option></select></label>
+    <label>AI难度: <select id="level"><option value="easy">简单</option><option value="medium" selected>中等</option><option value="hard">困难</option></select></label>
     <button id="reset">重新开局</button>
   </div>
   <div id="board" class="board" role="application" aria-label="Amazon 棋盘"></div>
@@ -69,14 +80,22 @@
     let phase = 'select'; // 'select' | 'arrow'
     let aiEnabled = false;
     let aiColor = BLACK; // which color AI plays when aiEnabled
-    let aiDelay = 600; // ms delay before AI moves
+    let aiDelay = 0; // ms delay before AI moves（避免重置后立刻阻塞UI）
+    let aiTimeLimit = 1200; // ms for search budget
+    let aiMaxDepth = 3;     // maximum search depth
     let gameOver = false;
     let isAnimating = false;
+    let runId = 0; // 每次新开局自增，旧回调失效
+    let aiTimer = null; // 待触发的AI计时器
+    let animTimer = null; // 动画兜底计时器
+    let searchWorker = null; // Web Worker for AI search
 
     function idx(r,c){return r*SIZE+c}
     function rc(i){return [Math.floor(i/SIZE), i%SIZE]}
 
     function setupInitial(){
+      runId++;
+      cancelAllAsync();
       board.fill(EMPTY);
       // Place 4 white amazons at positions specified by user (0-based): (0,2),(2,0),(0,5),(2,7)
       const whites = [[0,2],[2,0],[0,5],[2,7]];
@@ -138,6 +157,13 @@
       else if(mode === 'ai_vs_ai') { aiEnabled = true; aiBoth = true; aiColor = null; }
     }
 
+    function setLevelFromUI(){
+      const lv = document.getElementById('level').value;
+      if(lv === 'easy'){ aiTimeLimit = 600; aiMaxDepth = 2; }
+      else if(lv === 'medium'){ aiTimeLimit = 1200; aiMaxDepth = 3; }
+      else { aiTimeLimit = 2000; aiMaxDepth = 4; }
+    }
+
     function updateStatus(){
       statusEl.textContent = '当前回合：' + (currentPlayer===WHITE? '白方 ♕' : '黑方 ♛');
     }
@@ -193,7 +219,9 @@
             // animated move: from `selected` to `i`
             if(isAnimating) return;
             isAnimating = true;
+            const myRun = runId;
             animateMove(selected, i, currentPlayer, ()=>{
+              if(myRun!==runId){ isAnimating=false; return; }
               // after move completes, occupy destination and enter arrow phase
               board[i] = currentPlayer;
               board[selected] = EMPTY;
@@ -243,11 +271,16 @@
         return;
       }
       if(!aiEnabled) return;
+      // 清理旧的AI计时
+      if(aiTimer){ clearTimeout(aiTimer); aiTimer = null; }
+      const myRun = runId;
+      const schedule = (color)=>{
+        aiTimer = setTimeout(()=>{ if(myRun===runId && !gameOver) aiMoveFor(color); }, aiDelay);
+      };
       if(aiBoth){
-        // both sides AI: trigger AI for current player
-        setTimeout(()=> aiMoveFor(currentPlayer), aiDelay);
+        schedule(currentPlayer);
       } else if(currentPlayer === aiColor){
-        setTimeout(()=> aiMoveFor(aiColor), aiDelay);
+        schedule(aiColor);
       }
     }
 
@@ -273,9 +306,10 @@
       handleCellClick(i);
     });
 
-    resetBtn.addEventListener('click', ()=>{ hideOverlay(); setupInitial(); });
+    resetBtn.addEventListener('click', ()=>{ cancelAllAsync(); hideOverlay(); setupInitial(); });
     document.getElementById('mode').addEventListener('change', ()=>{ setModeFromUI(); });
-    document.getElementById('overlay-reset').addEventListener('click', ()=>{ hideOverlay(); setupInitial(); });
+    document.getElementById('level').addEventListener('change', ()=>{ setLevelFromUI(); });
+    document.getElementById('overlay-reset').addEventListener('click', ()=>{ cancelAllAsync(); hideOverlay(); setupInitial(); });
 
     // AI helpers
     function cloneBoard(b){ return b.slice(); }
@@ -302,13 +336,6 @@
         }
       }
       return res;
-    }
-
-    function evaluateBoardFor(color, b){
-      // simple mobility heuristic: number of available slides for color minus opponent
-      const my = getAmazons(color,b).reduce((acc,a)=>acc+slidesFrom(a,b).length,0);
-      const opp = getAmazons(color===WHITE?BLACK:WHITE,b).reduce((acc,a)=>acc+slidesFrom(a,b).length,0);
-      return my - opp;
     }
 
     // animation helpers
@@ -353,28 +380,241 @@
         cb && cb();
       });
       // safety fallback
-      setTimeout(()=>{ if($.contains(document, $moving[0])){ $moving.remove(); if(srcPiece.length) srcPiece.css('visibility',''); cb && cb(); } }, duration + 600);
+      if(animTimer) try{ clearTimeout(animTimer); }catch(e){}
+      animTimer = setTimeout(()=>{ if($.contains(document, $moving[0])){ $moving.remove(); if(srcPiece.length) srcPiece.css('visibility',''); cb && cb(); } }, duration + 600);
     }
 
     function aiMoveFor(color){
       if(gameOver) return;
       const moves = getAllLegalMoves(color, board);
       if(moves.length===0){ checkGameOverAndMaybeTriggerAI(); return; }
-      // evaluate moves, pick best
-      let bestScore = -Infinity; let bestMoves = [];
-      for(const mv of moves){
-        const tmp = cloneBoard(board);
-        tmp[mv.from] = EMPTY; tmp[mv.to] = color; tmp[mv.arrow] = ARROW;
-        const score = evaluateBoardFor(color, tmp);
-        if(score > bestScore){ bestScore = score; bestMoves = [mv]; }
-        else if(score === bestScore) bestMoves.push(mv);
-      }
-      const choice = bestMoves[Math.floor(Math.random()*bestMoves.length)];
-      // apply choice to real board with animation
+      // 取消之前的 worker（若在运行）
+      if(searchWorker){ try{ searchWorker.terminate(); }catch(e){} searchWorker = null; }
+      const myRun = runId;
+      // 构建 worker 代码（使用蒙特卡洛树搜索 MCTS）
+      const workerCode = `
+        const DIRS = [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1],[1,-1],[1,1]];
+        function idx(r,c,s){return r*s+c}
+        function rc(i,s){return [Math.floor(i/s), i%s]}
+        function slidesFrom(i, boardState, SIZE, EMPTY){
+          const [r,c] = rc(i,SIZE);
+          const moves = [];
+          for(const [dr,dc] of DIRS){
+            let nr=r+dr, nc=c+dc;
+            while(nr>=0 && nr<SIZE && nc>=0 && nc<SIZE){
+              const ni = idx(nr,nc,SIZE);
+              if(boardState[ni] !== EMPTY) break;
+              moves.push(ni);
+              nr += dr; nc += dc;
+            }
+          }
+          return moves;
+        }
+        function cloneBoard(b){ return b.slice(); }
+        function getAmazons(color, b){ const res=[]; for(let i=0;i<b.length;i++) if(b[i]===color) res.push(i); return res; }
+        function applyMoveTo(boardSrc, mv, color){ const tmp = cloneBoard(boardSrc); tmp[mv.from]=0; tmp[mv.to]=color; tmp[mv.arrow]=3; return tmp; }
+        function getAllLegalMoves(color, b, SIZE){ const res=[]; const amazons = getAmazons(color,b); for(const from of amazons){ const slides=slidesFrom(from,b,SIZE,0); for(const to of slides){ const tmp=cloneBoard(b); tmp[from]=0; tmp[to]=color; const arrows=slidesFrom(to,tmp,SIZE,0); for(const arrow of arrows){ res.push({from,to,arrow}); } } } return res; }
+
+        // Random playout (returns 1 if rootColor wins, 0 otherwise)
+        // Modified: 随机走直到出现不可通行的分区（所有连通分区不再同时包含双方棋子），
+        // 然后按各自“占有”的格子数判断胜负；若平局则以下一手玩家决定胜负。
+        function randomPlayout(board, toMove, rootColor, SIZE){
+          let b = cloneBoard(board);
+          let player = toMove;
+          while(true){
+            const moves = getAllLegalMoves(player, b, SIZE);
+            if(moves.length === 0){
+              // 当前玩家无路可走，另一方获胜
+              return (player === rootColor) ? 0 : 1;
+            }
+            // 随机走一步
+            const mv = moves[Math.floor(Math.random()*moves.length)];
+            b = applyMoveTo(b, mv, player);
+
+            // 检测基于 8 邻域的连通分区（把 ARROW 视为阻隔）
+            const visited = new Array(SIZE*SIZE).fill(false);
+            let partitioned = true;
+            let whiteArea = 0, blackArea = 0;
+            for(let i=0;i<SIZE*SIZE;i++){
+              if(visited[i]) continue;
+              if(b[i] === 3) continue; // ARROW
+              // BFS / DFS 收集连通分区
+              const stack = [i]; visited[i] = true;
+              let compSize = 0;
+              let hasWhite = false, hasBlack = false;
+              while(stack.length){
+                const cur = stack.pop();
+                compSize++;
+                if(b[cur] === 1) hasWhite = true;
+                else if(b[cur] === 2) hasBlack = true;
+                const rcPair = rc(cur, SIZE);
+                const r = rcPair[0], c = rcPair[1];
+                for(const d of DIRS){
+                  const nr = r + d[0], nc = c + d[1];
+                  if(nr>=0 && nr<SIZE && nc>=0 && nc<SIZE){
+                    const ni = idx(nr,nc,SIZE);
+                    if(!visited[ni] && b[ni] !== 3){ visited[ni] = true; stack.push(ni); }
+                  }
+                }
+              }
+              if(hasWhite && hasBlack){ partitioned = false; break; }
+              if(hasWhite) whiteArea += compSize;
+              else if(hasBlack) blackArea += compSize;
+            }
+
+            if(partitioned){
+              if(whiteArea > blackArea) return (rootColor === 1) ? 1 : 0;
+              if(blackArea > whiteArea) return (rootColor === 2) ? 1 : 0;
+              // 平局：以下一手玩家（即当前走子后的对方）决定胜负
+              const nextPlayer = (player === 1 ? 2 : 1);
+              return (nextPlayer === rootColor) ? 1 : 0;
+            }
+
+            player = (player===1?2:1);
+          }
+        }
+
+        // MCTS Node
+        function Node(parent, move, playerWhoMoved, board){
+          this.parent = parent || null;
+          this.move = move || null; // move that led to this node
+          this.playerWhoMoved = playerWhoMoved || null;
+          this.board = board || null;
+          this.children = [];
+          this.untriedMoves = null;
+          this.wins = 0;
+          this.visits = 0;
+        }
+
+        Node.prototype.expand = function(move, nextBoard, nextPlayer){
+          const child = new Node(this, move, nextPlayer, nextBoard);
+          this.children.push(child);
+          return child;
+        };
+
+        Node.prototype.isFullyExpanded = function(){ return this.untriedMoves && this.untriedMoves.length === 0; };
+
+        Node.prototype.bestChild = function(cParam){
+          let best = null; let bestU = -Infinity;
+          for(const ch of this.children){
+            const u = (ch.wins / (ch.visits||1)) + cParam * Math.sqrt(2*Math.log(this.visits+1)/(ch.visits||1));
+            if(u > bestU){ bestU = u; best = ch; }
+          }
+          return best;
+        };
+
+        function mcts(rootBoard, rootPlayer, SIZE, timeLimit, maxDepth){
+          const start = Date.now();
+          const root = new Node(null, null, (rootPlayer===1?2:1), rootBoard);
+          root.untriedMoves = getAllLegalMoves(rootPlayer, rootBoard, SIZE);
+          const C = 1.4;
+          let iterations = 0;
+          while(Date.now() - start < timeLimit){
+            iterations++;
+            // SELECTION
+            let node = root;
+            let player = rootPlayer;
+            // descend
+            while(node.untriedMoves && node.untriedMoves.length === 0 && node.children.length > 0){
+              node = node.bestChild(C);
+              player = (player===1?2:1);
+            }
+            // EXPANSION
+            if(node.untriedMoves === null){
+              node.untriedMoves = getAllLegalMoves(player, node.board, SIZE);
+            }
+            if(node.untriedMoves && node.untriedMoves.length > 0){
+              // Weighted random selection among untried moves using mobility heuristic
+              const movesList = node.untriedMoves;
+              const weighted = [];
+              let totalW = 0;
+              for(let mi=0; mi<movesList.length; mi++){
+                const mv = movesList[mi];
+                const nb = applyMoveTo(node.board, mv, player);
+                // mobility: 改为双方移动性之比 (playerMobility / opponentMobility)
+                const amazonsP = getAmazons(player, nb);
+                let mobP = 0;
+                for(const a of amazonsP){ mobP += slidesFrom(a, nb, SIZE, 0).length; }
+                const opp = (player===1?2:1);
+                const amazonsO = getAmazons(opp, nb);
+                let mobO = 0;
+                for(const a of amazonsO){ mobO += slidesFrom(a, nb, SIZE, 0).length; }
+                const diff = mobP - mobO;
+                const w = Math.exp(diff / 20);
+                console.log(w);
+                weighted.push({mv, nb, w});
+                totalW += w;
+              }
+              // pick by weighted roulette
+              let pick = Math.random() * totalW;
+              let chosen = null; let chosenIdx = -1;
+              for(let k=0;k<weighted.length;k++){
+                pick -= weighted[k].w;
+                if(pick <= 0){ chosen = weighted[k]; chosenIdx = k; break; }
+              }
+              if(!chosen){ chosen = weighted[weighted.length-1]; chosenIdx = weighted.length-1; }
+              // remove chosen.mv from node.untriedMoves
+              const removeIndex = node.untriedMoves.indexOf(chosen.mv);
+              if(removeIndex >= 0) node.untriedMoves.splice(removeIndex,1);
+              const child = node.expand(chosen.mv, chosen.nb, player);
+              node = child;
+              player = (player===1?2:1);
+            }
+            // SIMULATION
+            const result = randomPlayout(node.board || root.board, player, rootPlayer, SIZE);
+            // BACKPROPAGATION
+            let curr = node;
+            while(curr !== null){
+              curr.visits += 1;
+              // if result is win for rootPlayer and child is in its line, add win
+              curr.wins += result;
+              curr = curr.parent;
+            }
+          }
+          // choose best child by visits
+          let best = null; let bestVisits = -1;
+          for(const ch of root.children){ if(ch.visits > bestVisits){ bestVisits = ch.visits; best = ch; } }
+          return best ? best.move : null;
+        }
+
+        self.onmessage = function(ev){ try{ const data = ev.data; const choice = mcts(data.board, data.color, data.SIZE, data.timeLimit, data.maxDepth); self.postMessage({choice:choice}); }catch(e){ self.postMessage({error:String(e)}); } };
+      `;
+      const blob = new Blob([workerCode], {type: 'application/javascript'});
+      const url = URL.createObjectURL(blob);
+      searchWorker = new Worker(url);
+      // send data to worker
+      searchWorker.postMessage({ board: board.slice(), SIZE: SIZE, WHITE: WHITE, BLACK: BLACK, ARROW: ARROW, EMPTY: EMPTY, color: color, timeLimit: aiTimeLimit, maxDepth: aiMaxDepth });
+      searchWorker.onmessage = function(ev){
+        try{ URL.revokeObjectURL(url); }catch(e){}
+        const data = ev.data;
+        // terminate worker reference
+        try{ searchWorker.terminate(); }catch(e){}
+        searchWorker = null;
+        if(myRun !== runId) return; // outdated
+        if(gameOver) return;
+        if(data && data.choice){
+          const choice = data.choice;
+          if(!choice){ // fallback random
+            const fallback = moves[Math.floor(Math.random()*moves.length)];
+            performAIMove(fallback, color, myRun);
+          } else {
+            performAIMove(choice, color, myRun);
+          }
+        } else {
+          // error or no choice
+          const fallback = moves[Math.floor(Math.random()*moves.length)];
+          performAIMove(fallback, color, myRun);
+        }
+      };
+      searchWorker.onerror = function(err){ try{ searchWorker.terminate(); }catch(e){} searchWorker = null; const fallback = moves[Math.floor(Math.random()*moves.length)]; performAIMove(fallback, color, myRun); };
+    }
+
+    function performAIMove(choice, color, myRun){
+      if(myRun !== runId) return;
       if(isAnimating) return;
       isAnimating = true;
       animateMove(choice.from, choice.to, color, ()=>{
-        // after piece moved
+        if(myRun!==runId){ isAnimating=false; return; }
         board[choice.to] = color;
         board[choice.from] = EMPTY;
         board[choice.arrow] = ARROW;
@@ -390,7 +630,17 @@
 
     // init
     setModeFromUI();
+    setLevelFromUI();
     setupInitial();
+
+    // 统一取消：终止AI计时、搜索与动画，避免“重新开局”竞态
+    function cancelAllAsync(){
+      try{ if(aiTimer){ clearTimeout(aiTimer); aiTimer = null; } }catch(e){}
+      try{ if(searchWorker){ searchWorker.terminate(); searchWorker = null; } }catch(e){}
+      try{ if(animTimer){ clearTimeout(animTimer); animTimer = null; } }catch(e){}
+      try{ $('.moving-piece').stop(true,true).remove(); }catch(e){}
+      isAnimating = false;
+    }
   })();
   </script>
 </body>
